@@ -1,0 +1,8 @@
+{
+  "name": "Control de Gastos y Costos",
+  "description": "PWA para administración financiera personal y de negocio de postres con costeo de recetas, inventario y ventas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f97316"/>
+      <stop offset="50%" stop-color="#ea580c"/>
+      <stop offset="100%" stop-color="#be123c"/>
+    </linearGradient>
+    <linearGradient id="coin" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fde047"/>
+      <stop offset="100%" stop-color="#eab308"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="110" fill="url(#bg)"/>
+  <!-- Dessert slice outline -->
+  <path d="M120 320 L270 140 L380 250 L120 320 Z" fill="#fed7aa" stroke="#fff" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M120 320 L380 250 L380 290 L120 360 Z" fill="#fb923c" stroke="#fff" stroke-width="12" stroke-linejoin="round"/>
+  <circle cx="340" cy="340" r="90" fill="url(#coin)" stroke="#fff" stroke-width="10"/>
+  <text x="340" y="375" font-family="system-ui, sans-serif" font-size="100" font-weight="900" text-anchor="middle" fill="#854d0e">$</text>
+</svg>

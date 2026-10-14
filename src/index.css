@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@layer utilities {
+  /* Ocultar barra de scroll para navegación horizontal táctil */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Soporte táctil optimizado para iOS y Android */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
