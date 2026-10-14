@@ -43,10 +43,11 @@ export const formatPorcentaje = (percentage: number): string => {
  */
 export const convertirAUnidadUso = (
   cantidadCompra: number,
-  unidadCompra: UnidadMedida
+  unidadCompra: UnidadMedida,
+  piezasPorPaquete = 1
 ): { cantidadEnUnidadUso: number; unidadUso: 'g' | 'ml' | 'pieza' } => {
   const cantidad = Math.max(0, cantidadCompra);
-  
+
   switch (unidadCompra) {
     case 'kg':
       return { cantidadEnUnidadUso: cantidad * 1000, unidadUso: 'g' };
@@ -59,23 +60,34 @@ export const convertirAUnidadUso = (
     case 'pieza':
       return { cantidadEnUnidadUso: cantidad, unidadUso: 'pieza' };
     case 'paquete':
-      // Si compra un paquete, la cantidad equivale al conteo de piezas
-      return { cantidadEnUnidadUso: cantidad, unidadUso: 'pieza' };
+      return {
+        cantidadEnUnidadUso: cantidad * Math.max(1, piezasPorPaquete),
+        unidadUso: 'pieza',
+      };
     default:
       return { cantidadEnUnidadUso: cantidad, unidadUso: 'pieza' };
   }
 };
 
-/**
- * Cálculo del costo unitario por gramo, mililitro o pieza
- */
 export const calcularCostoPorUnidadUso = (
   precioCompra: number,
   cantidadCompra: number,
-  unidadCompra: UnidadMedida
-): { costoPorUnidadUso: number; unidadUso: 'g' | 'ml' | 'pieza'; cantidadTotal: number } => {
-  const { cantidadEnUnidadUso, unidadUso } = convertirAUnidadUso(cantidadCompra, unidadCompra);
-  const costo = cantidadEnUnidadUso > 0 ? precioCompra / cantidadEnUnidadUso : 0;
+  unidadCompra: UnidadMedida,
+  piezasPorPaquete = 1
+): {
+  costoPorUnidadUso: number;
+  unidadUso: 'g' | 'ml' | 'pieza';
+  cantidadTotal: number;
+} => {
+  const { cantidadEnUnidadUso, unidadUso } = convertirAUnidadUso(
+    cantidadCompra,
+    unidadCompra,
+    piezasPorPaquete
+  );
+
+  const costo =
+    cantidadEnUnidadUso > 0 ? precioCompra / cantidadEnUnidadUso : 0;
+
   return {
     costoPorUnidadUso: costo,
     unidadUso,
@@ -177,12 +189,24 @@ export const calcularRecargoSobreCosto = (precioVenta: number, costo: number): n
  * Fórmula obligatoria: Precio = Costo Total / (1 - Margen Objetivo)
  * Ejemplo: Costo $40.05, Margen 50% -> 40.05 / (1 - 0.50) = $80.10 MXN
  */
-export const calcularPrecioRecomendado = (costoUnitario: number, margenDeseadoPct: number): number => {
-  if (costoUnitario <= 0) return 0;
-  const margenDec = Math.min(Math.max(margenDeseadoPct, 0), 99) / 100;
-  const precio = costoUnitario / (1 - margenDec);
-  return Math.round(precio * 100) / 100;
+
+export const calcularPrecioRecomendado = (  costoUnitario: number,  margenDeseadoPct: number): number => 
+{
+  if (!Number.isFinite(costoUnitario) || costoUnitario <= 0) 
+    {
+      return 0;
+    }
+
+  const margenValido = Number.isFinite(margenDeseadoPct)
+    ? Math.min(Math.max(margenDeseadoPct, 0), 99)
+    : 50;
+
+  const margenDecimal = margenValido / 100;
+  const precio = costoUnitario / (1 - margenDecimal);
+
+  return Math.round((precio + Number.EPSILON) * 100) / 100;
 };
+
 
 /**
  * Formateador de fechas en español

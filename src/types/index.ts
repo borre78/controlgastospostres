@@ -13,6 +13,7 @@ export interface Insumo {
   tipo: TipoInsumo;
   unidadCompra: UnidadMedida;
   cantidadCompra: number; // Ej. 1.8 kg o 50 piezas
+  piezasPorPaquete?: number; // Piezas contenidas en cada paquete
   precioCompra: number; // En pesos MXN
   unidadUso: 'g' | 'ml' | 'pieza'; // Unidad para calcular recetas
   cantidadEnUnidadUso: number; // Ej. 1800 g o 50 piezas

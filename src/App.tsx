@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, {useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
@@ -19,7 +19,12 @@ import { SettingsView } from './components/settings/SettingsView';
 import { OfflineIndicator } from './components/common/OfflineIndicator';
 
 function MainApp() {
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [activeTab, setActiveTab] = useState(() => {
+  return localStorage.getItem('activeTab') || 'dashboard';
+});
+useEffect(() => {
+  localStorage.setItem('activeTab', activeTab);
+}, [activeTab]);
   const { isLoaded } = useApp();
 
   if (!isLoaded) {
@@ -64,11 +69,20 @@ function MainApp() {
       <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Contenedor Principal con Sidebar y Área de Contenido */}
-      <div className="flex-1 flex max-w-7xl w-full mx-auto">
+      <div className="flex-1 flex flex-col lg:flex-row max-w-7xl w-full min-w-0 mx-auto">
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
         {/* Vista activa del módulo */}
-        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 max-w-full overflow-hidden pb-20 lg:pb-8">
+        
+        <main
+          style={{
+            width: '100%',
+            flex: '1 1 auto',
+            alignSelf: 'stretch',
+            maxWidth: '100%',
+            minWidth: 0,
+          }}
+          className="p-3.5 sm:p-6 lg:p-8 overflow-x-hidden pb-20 lg:pb-8">
           {renderActiveModule()}
         </main>
       </div>

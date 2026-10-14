@@ -71,12 +71,31 @@ export const IngredientsView: React.FC = () => {
   // Confirmación eliminar
   const [insumoAEliminar, setInsumoAEliminar] = useState<Insumo | null>(null);
 
+  const [formPiezasPorPaquete, setFormPiezasPorPaquete] = useState('1');
+
   // Cálculo en vivo para el formulario
-  const calculoEnVivo = useMemo(() => {
-    const cant = parseFloat(formCantidadCompra) || 1;
-    const precio = parseFloat(formPrecioCompra) || 0;
-    return calcularCostoPorUnidadUso(precio, cant, formUnidadCompra);
-  }, [formCantidadCompra, formPrecioCompra, formUnidadCompra]);
+  
+const calculoEnVivo = useMemo(() => {
+  const cant = parseFloat(formCantidadCompra) || 1;
+  const precio = parseFloat(formPrecioCompra) || 0;
+  const piezas = Math.max(
+    1,
+    parseInt(formPiezasPorPaquete, 10) || 1
+  );
+
+  return calcularCostoPorUnidadUso(
+    precio,
+    cant,
+    formUnidadCompra,
+    piezas
+  );
+}, [
+  formCantidadCompra,
+  formPrecioCompra,
+  formUnidadCompra,
+  formPiezasPorPaquete,
+]);
+
 
   const handleOpenNuevo = () => {
     setEditingInsumo(null);
@@ -90,6 +109,7 @@ export const IngredientsView: React.FC = () => {
     setFormProveedor('');
     setFormNotas('');
     setIsModalOpen(true);
+    setFormPiezasPorPaquete('1');
   };
 
   const handleOpenEditar = (ins: Insumo) => {
@@ -104,6 +124,9 @@ export const IngredientsView: React.FC = () => {
     setFormProveedor(ins.proveedor || '');
     setFormNotas(ins.notas || '');
     setIsModalOpen(true);
+    setFormPiezasPorPaquete(
+      String(ins.piezasPorPaquete ?? 1)
+    );
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -120,7 +143,8 @@ export const IngredientsView: React.FC = () => {
     const { costoPorUnidadUso, unidadUso, cantidadTotal } = calcularCostoPorUnidadUso(
       precioCompra,
       cantCompra,
-      formUnidadCompra
+      formUnidadCompra,
+      Number(formPiezasPorPaquete) || 1
     );
 
     if (editingInsumo) {
@@ -137,6 +161,10 @@ export const IngredientsView: React.FC = () => {
         stockMinimo: stockMin,
         proveedor: formProveedor.trim() || undefined,
         notas: formNotas.trim() || undefined,
+        piezasPorPaquete:
+          formUnidadCompra === 'paquete'
+            ? Number(formPiezasPorPaquete)
+            : 1,
       });
       // Recalcular recetas automáticamente cuando un ingrediente cambia de precio
       recalcularTodasLasRecetas();
@@ -155,6 +183,10 @@ export const IngredientsView: React.FC = () => {
         stockMinimo: stockMin,
         proveedor: formProveedor.trim() || undefined,
         notas: formNotas.trim() || undefined,
+        piezasPorPaquete:
+          formUnidadCompra === 'paquete'
+            ? Number(formPiezasPorPaquete)
+            : 1,
       });
     }
 
@@ -561,6 +593,26 @@ export const IngredientsView: React.FC = () => {
             </div>
           </div>
 
+          {formUnidadCompra === 'paquete' && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Piezas por paquete *
+              </label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                required
+                value={formPiezasPorPaquete}
+                onChange={(e) => setFormPiezasPorPaquete(e.target.value)}
+                className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                ¿Cuántas piezas contiene cada paquete?
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -606,8 +658,20 @@ export const IngredientsView: React.FC = () => {
                 Costo Calculado para Recetas:
               </span>
               <p className="text-xs text-amber-900/70 dark:text-amber-300/70 mt-0.5">
-                {formCantidadCompra || 0} {formUnidadCompra} = {calculoEnVivo.cantidadTotal}{' '}
-                {calculoEnVivo.unidadUso}
+                {formCantidadCompra || 0}{' '}
+                  {formUnidadCompra === 'paquete'
+                    ? Number(formCantidadCompra) === 1
+                      ? 'paquete'
+                      : 'paquetes'
+                    : formUnidadCompra}
+                  {' = '}
+                  {calculoEnVivo.cantidadTotal}{' '}
+                  {calculoEnVivo.unidadUso === 'pieza' &&
+                  formUnidadCompra === 'paquete'
+                    ? Number(calculoEnVivo.cantidadTotal) === 1
+                      ? 'pieza'
+                      : 'piezas'
+                    : calculoEnVivo.unidadUso}
               </p>
             </div>
             <div className="text-right">

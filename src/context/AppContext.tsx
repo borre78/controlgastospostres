@@ -354,8 +354,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!insumo) return;
 
     let incrementoUnidadUso = cantidadCompra;
-    if (insumo.unidadCompra === 'kg') incrementoUnidadUso = cantidadCompra * 1000;
-    else if (insumo.unidadCompra === 'litro') incrementoUnidadUso = cantidadCompra * 1000;
+    if (insumo.unidadCompra === 'kg') {
+      incrementoUnidadUso = cantidadCompra * 1000;
+    } else if (insumo.unidadCompra === 'litro') {
+      incrementoUnidadUso = cantidadCompra * 1000;
+    } else if (insumo.unidadCompra === 'paquete') {
+      incrementoUnidadUso =
+        cantidadCompra * Math.max(1, insumo.piezasPorPaquete ?? 1);
+    }
 
     const nuevoCostoUnitario = precioCompra / incrementoUnidadUso;
 
@@ -572,22 +578,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const updatePresentacion = (
-    productoId: string,
-    presentacionId: string,
-    cambios: Partial<PresentacionComercial>
-  ) => {
-    setProductos((prev) =>
-      prev.map((p) => {
-        if (p.id !== productoId) return p;
-        const actualizadas = (p.presentaciones || []).map((pres) => {
-          if (pres.id !== presentacionId) return pres;
-          return { ...pres, ...cambios };
-        });
-        return { ...p, presentaciones: actualizadas };
-      })
-    );
-  };
+  
+const updatePresentacion = (
+  productoId: string,
+  presentacionId: string,
+  cambios: Partial<PresentacionComercial>
+) => {
+  setProductos((prev) =>
+    prev.map((p) => {
+      if (p.id !== productoId) return p;
+
+      const actualizadas = (p.presentaciones || []).map((pres) => {
+        if (pres.id !== presentacionId) return pres;
+
+        const actualizada = { ...pres, ...cambios };
+
+        const margenDeseadoPct = Number.isFinite(
+          actualizada.margenDeseadoPct
+        )
+          ? Math.min(
+              Math.max(actualizada.margenDeseadoPct, 0),
+              99
+            )
+          : 50;
+
+        const costoUnitarioTotal =
+          actualizada.costoBaseReceta +
+          actualizada.costoEmpaqueTotal;
+
+        const precioSugerido = calcularPrecioRecomendado(
+          costoUnitarioTotal,
+          margenDeseadoPct
+        );
+
+        const gananciaPorUnidad =
+          actualizada.precioVentaReal - costoUnitarioTotal;
+
+        const margenRealPct =
+          actualizada.precioVentaReal > 0
+            ? (gananciaPorUnidad / actualizada.precioVentaReal) * 100
+            : 0;
+
+        return {
+          ...actualizada,
+          margenDeseadoPct,
+          costoUnitarioTotal,
+          precioSugerido,
+          gananciaPorUnidad,
+          margenRealPct,
+        };
+      });
+
+      return { ...p, presentaciones: actualizadas };
+    })
+  );
+};
+
 
   const deletePresentacion = (productoId: string, presentacionId: string): boolean => {
     const tieneVentas = ventas.some(
@@ -860,6 +906,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { ...prev, tema: nuevoTema };
     });
   };
+
+  useEffect(() => {
+  const esOscuro = configuracion.tema === 'dark';
+
+  document.documentElement.classList.toggle('dark', esOscuro);
+}, [configuracion.tema]);
 
   // ==================== GESTIÓN DE DATOS ====================
 
