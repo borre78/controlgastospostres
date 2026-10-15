@@ -2,8 +2,27 @@
 import React, { useRef, useState } from 'react';
 import { auth } from '../../firebase';
 import { importarRespaldoAFirestore } from '../../services/firestoreImportService';
+import { useApp } from '../../context/AppContext';
 
 export function MigracionFirebaseView() {
+const { migrarDatosLocalesAFirebase } = useApp();
+const [migrando, setMigrando] = useState(false);
+
+const ejecutarMigracion = async () => {
+  setMigrando(true);
+
+  try {
+    const resultado = await migrarDatosLocalesAFirebase();
+    alert(resultado.mensaje);
+  } catch (error) {
+    console.error(error);
+    alert('No se pudo completar la migración.');
+  } finally {
+    setMigrando(false);
+  }
+};
+
+
   const inputRef = useRef<HTMLInputElement>(null);
   const [archivo, setArchivo] = useState<File | null>(null);
   const [procesando, setProcesando] = useState(false);
@@ -93,6 +112,30 @@ export function MigracionFirebaseView() {
         existentes en las colecciones que va a importar.
       </div>
 
+      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+  <h2 className="text-lg font-semibold">
+    Completar datos en Firebase
+  </h2>
+
+  <p className="my-2 text-sm">
+    Crea los documentos iniciales que falten utilizando
+    la información definida en la aplicación.
+  </p>
+
+  <button
+    type="button"
+    disabled={migrando}
+    onClick={ejecutarMigracion}
+    className="rounded-lg bg-blue-600 px-4 py-2 text-white
+               hover:bg-blue-700 disabled:cursor-not-allowed
+               disabled:opacity-50"
+  >
+    {migrando
+      ? 'Migrando datos...'
+      : 'Crear colecciones y documentos faltantes'}
+  </button>
+</div>
+
       <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 space-y-4">
         <label className="block text-sm font-semibold">
           Archivo de respaldo JSON
@@ -152,3 +195,4 @@ export function MigracionFirebaseView() {
     </section>
   );
 }
+

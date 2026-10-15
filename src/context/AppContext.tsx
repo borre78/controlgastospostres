@@ -127,6 +127,13 @@ interface AppContextType {
   reiniciarDatos: () => void;
   exportarRespaldoJSON: () => void;
   importarRespaldoJSON: (jsonString: string) => { success: boolean; mensaje: string };
+  migrarDatosLocalesAFirebase: () => Promise<{
+    success: boolean;
+    mensaje: string;
+    subidos: number;
+    existentes: number;
+    omitidos: number;
+  }>;
 }
 
 const STORAGE_KEY_PREFIX = 'gastos_costos_v2_';
@@ -169,11 +176,21 @@ useEffect(() => {
 
       const [
         insumosNube,
+        recetasNube,
+        productosNube,
+        ventasNube,
+        gastosNube,
         categoriasNube,
+        produccionesNube,
         configuracionNube,
       ] = await Promise.all([
         listarDocumentos('insumos'),
+        listarDocumentos('recetas'),
+        listarDocumentos('productos'),
+        listarDocumentos('ventas'),
+        listarDocumentos('gastos'),
         listarDocumentos('categorias'),
+        listarDocumentos('producciones'),
         obtenerDocumento('configuracion', 'general'),
       ]);
 
@@ -183,11 +200,59 @@ useEffect(() => {
       // Así no eliminamos accidentalmente información local
       // si una colección de la nube todavía está vacía.
       if (insumosNube.length > 0) {
-        setInsumos(insumosNube as unknown as Insumo[]);
+        setInsumos((locales) => {
+          const nube = insumosNube as unknown as Insumo[];
+          const idsNube = new Set(nube.map((item) => item.id));
+          return [...nube, ...locales.filter((item) => !idsNube.has(item.id))];
+        });
+      }
+
+      if (recetasNube.length > 0) {
+        setRecetas((locales) => {
+          const nube = recetasNube as unknown as Receta[];
+          const idsNube = new Set(nube.map((item) => item.id));
+          return [...nube, ...locales.filter((item) => !idsNube.has(item.id))];
+        });
+      }
+
+      if (productosNube.length > 0) {
+        setProductos((locales) => {
+          const nube = productosNube as unknown as ProductoVenta[];
+          const idsNube = new Set(nube.map((item) => item.id));
+          return [...nube, ...locales.filter((item) => !idsNube.has(item.id))];
+        });
+      }
+
+      if (ventasNube.length > 0) {
+        setVentas((locales) => {
+          const nube = ventasNube as unknown as Venta[];
+          const idsNube = new Set(nube.map((item) => item.id));
+          return [...nube, ...locales.filter((item) => !idsNube.has(item.id))];
+        });
+      }
+
+      if (gastosNube.length > 0) {
+        setGastos((locales) => {
+          const nube = gastosNube as unknown as Gasto[];
+          const idsNube = new Set(nube.map((item) => item.id));
+          return [...nube, ...locales.filter((item) => !idsNube.has(item.id))];
+        });
       }
 
       if (categoriasNube.length > 0) {
-        setCategorias(categoriasNube as unknown as CategoriaGasto[]);
+        setCategorias((locales) => {
+          const nube = categoriasNube as unknown as CategoriaGasto[];
+          const idsNube = new Set(nube.map((item) => item.id));
+          return [...nube, ...locales.filter((item) => !idsNube.has(item.id))];
+        });
+      }
+
+      if (produccionesNube.length > 0) {
+        setProducciones((locales) => {
+          const nube = produccionesNube as unknown as RegistroProduccion[];
+          const idsNube = new Set(nube.map((item) => item.id));
+          return [...nube, ...locales.filter((item) => !idsNube.has(item.id))];
+        });
       }
 
       if (configuracionNube) {
@@ -1163,6 +1228,80 @@ const updatePresentacion = (
     localStorage.setItem(`${STORAGE_KEY_PREFIX}cleared`, 'true');
   };
 
+  /**
+   * Migración manual y segura:
+   * - Solo crea documentos que todavía no existen en Firebase.
+   * - Nunca sobrescribe documentos existentes.
+   * - Omite registros de demostración para no subir datos de ejemplo.
+   */
+  
+
+const migrarDatosLocalesAFirebase = async (): Promise<{
+  success: boolean;
+  mensaje: string;
+  subidos: number;
+  existentes: number;
+  omitidos: number;
+}> => {
+  let subidos = 0;
+  let existentes = 0;
+  let omitidos = 0;
+
+  try {
+    await obtenerUsuarioAutorizado();
+
+    // Las colecciones de Firestore se crean al guardar
+    // su primer documento. No subimos registros de ejemplo.
+
+    // Revisar únicamente la configuración general.
+    const configuracionExistente = await obtenerDocumento(
+      'configuracion',
+      'general'
+    );
+
+    if (configuracionExistente) {
+      existentes++;
+    } else {
+      await guardarDocumento(
+        'configuracion',
+        'general',
+        CONFIGURACION_DEFAULT
+      );
+
+      subidos++;
+    }
+
+    return {
+      success: true,
+      mensaje:
+        `Inicialización completada. Documentos creados: ${subidos}; ` +
+        `configuraciones existentes: ${existentes}; omitidos: ${omitidos}. ` +
+        'No se subieron datos de demostración.',
+      subidos,
+      existentes,
+      omitidos,
+    };
+  } catch (error) {
+    console.error(
+      'Error al completar la estructura de Firebase:',
+      error
+    );
+
+    return {
+      success: false,
+      mensaje:
+        error instanceof Error
+          ? error.message
+          : 'No se pudo completar la inicialización de Firebase.',
+      subidos,
+      existentes,
+      omitidos,
+    };
+  }
+};
+
+
+
   const exportarRespaldoJSON = () => {
     const backup = {
       app: 'Control de Gastos y Costos',
@@ -1261,6 +1400,7 @@ const updatePresentacion = (
         reiniciarDatos,
         exportarRespaldoJSON,
         importarRespaldoJSON,
+        migrarDatosLocalesAFirebase,
       }}
     >
       {children}
