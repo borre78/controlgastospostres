@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   Insumo,
   Receta,
@@ -366,6 +366,93 @@ useEffect(() => {
       console.error('Error al persistir datos:', e);
     }
   }, [isLoaded, insumos, recetas, productos, ventas, gastos, categorias, producciones, configuracion]);
+
+  // Sincronización incremental con Firestore.
+  // La primera fotografía se toma después de la carga inicial para no subir
+  // automáticamente los datos de ejemplo ni reemplazar datos existentes.
+  const ultimaFotoNube = useRef<{
+    insumos: Insumo[];
+    recetas: Receta[];
+    productos: ProductoVenta[];
+    ventas: Venta[];
+    gastos: Gasto[];
+    categorias: CategoriaGasto[];
+    producciones: RegistroProduccion[];
+    configuracion: ConfiguracionApp;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    const actual = {
+      insumos, recetas, productos, ventas, gastos, categorias, producciones, configuracion
+    };
+
+    // Establecer línea base; la lectura de Firebase/localStorage ya terminó.
+    if (ultimaFotoNube.current === null) {
+      ultimaFotoNube.current = actual;
+      return;
+    }
+
+    const anterior = ultimaFotoNube.current;
+    // Actualizar la fotografía inmediatamente para evitar duplicados en renders.
+    ultimaFotoNube.current = actual;
+
+    const sincronizarLista = async <T extends { id: string },>(
+      coleccion: string,
+      previos: T[],
+      nuevos: T[]
+    ) => {
+      const prevMap = new Map(previos.map((item) => [item.id, item]));
+      const nextMap = new Map(nuevos.map((item) => [item.id, item]));
+
+      for (const [id, item] of nextMap) {
+        const previo = prevMap.get(id);
+        if (JSON.stringify(previo) !== JSON.stringify(item)) {
+          try {
+            await obtenerUsuarioAutorizado();
+            await guardarDocumento(coleccion, id, item);
+          } catch (error) {
+            console.error(`No se pudo guardar ${coleccion}/${id} en Firebase:`, error);
+          }
+        }
+      }
+
+      // Solo borrar documentos que existían en la fotografía previa.
+      for (const [id] of prevMap) {
+        if (!nextMap.has(id)) {
+          try {
+            await obtenerUsuarioAutorizado();
+            await eliminarDocumento(coleccion, id);
+          } catch (error) {
+            console.error(`No se pudo eliminar ${coleccion}/${id} en Firebase:`, error);
+          }
+        }
+      }
+    };
+
+    void sincronizarLista('insumos', anterior.insumos, actual.insumos);
+    void sincronizarLista('recetas', anterior.recetas, actual.recetas);
+    void sincronizarLista('productos', anterior.productos, actual.productos);
+    void sincronizarLista('ventas', anterior.ventas, actual.ventas);
+    void sincronizarLista('gastos', anterior.gastos, actual.gastos);
+    void sincronizarLista('categorias', anterior.categorias, actual.categorias);
+    void sincronizarLista('producciones', anterior.producciones, actual.producciones);
+
+    if (JSON.stringify(anterior.configuracion) !== JSON.stringify(actual.configuracion)) {
+      void (async () => {
+        try {
+          await obtenerUsuarioAutorizado();
+          await guardarDocumento('configuracion', 'general', actual.configuracion);
+        } catch (error) {
+          console.error('No se pudo guardar la configuración en Firebase:', error);
+        }
+      })();
+    }
+  }, [
+    isLoaded, insumos, recetas, productos, ventas, gastos,
+    categorias, producciones, configuracion
+  ]);
 
   // Manejo de tema (Claro / Oscuro)
   useEffect(() => {

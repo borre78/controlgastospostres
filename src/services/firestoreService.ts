@@ -79,20 +79,47 @@ export async function listarDocumentos(
   }));
 }
 
+
+function limpiarDatosFirestore<T>(valor: T): T {
+  if (Array.isArray(valor)) {
+    return valor.map(elemento =>
+      elemento === undefined
+        ? null
+        : limpiarDatosFirestore(elemento)
+    ) as T;
+  }
+
+  if (
+    valor !== null &&
+    typeof valor === 'object' &&
+    (
+      Object.getPrototypeOf(valor) === Object.prototype ||
+      Object.getPrototypeOf(valor) === null
+    )
+  ) {
+    const resultado: Record<string, unknown> = {};
+
+    for (const [clave, contenido] of Object.entries(valor)) {
+      if (contenido !== undefined) {
+        resultado[clave] = limpiarDatosFirestore(contenido);
+      }
+    }
+
+    return resultado as T;
+  }
+
+  return valor;
+}
+
+
 export async function guardarDocumento(
   coleccion: string,
   id: string,
-  datos: Record<string, unknown>
-): Promise<void> {
-  const referencia = doc(
-    db,
-    'negocios',
-    NEGOCIO_ID,
-    coleccion,
-    id
-  );
+  datos: DocumentData
+) {
+  const ref = doc(db, 'negocios', NEGOCIO_ID, coleccion, id);
 
-  await setDoc(referencia, datos);
+  await setDoc(ref, limpiarDatosFirestore(datos));
 }
 
 
@@ -114,15 +141,11 @@ export async function eliminarDocumento(
 export async function guardarDocumentoSeguro(
   coleccion: string,
   id: string,
-  datos: Record<string, unknown>
-): Promise<void> {
-  const referencia = doc(
-    db,
-    'negocios',
-    NEGOCIO_ID,
-    coleccion,
-    id
-  );
+  datos: DocumentData
+) {
+  const ref = doc(db, 'negocios', NEGOCIO_ID, coleccion, id);
 
-  await setDoc(referencia, datos, { merge: false });
+  await setDoc(ref, limpiarDatosFirestore(datos), {
+    merge: false
+  });
 }
