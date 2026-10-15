@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Apple,
   Plus,
@@ -70,6 +70,22 @@ export const IngredientsView: React.FC = () => {
 
   // Confirmación eliminar
   const [insumoAEliminar, setInsumoAEliminar] = useState<Insumo | null>(null);
+
+  // Menú de acciones para móvil (mantener presionada la fila)
+  const [insumoMenuMovil, setInsumoMenuMovil] = useState<Insumo | null>(null);
+  const temporizadorPulsacion = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pulsacionLargaActivada = useRef(false);
+
+  const cancelarPulsacionLarga = () => {
+    if (temporizadorPulsacion.current) {
+      clearTimeout(temporizadorPulsacion.current);
+      temporizadorPulsacion.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => cancelarPulsacionLarga();
+  }, []);
 
   const [formPiezasPorPaquete, setFormPiezasPorPaquete] = useState('1');
 
@@ -385,7 +401,24 @@ const calculoEnVivo = useMemo(() => {
                   return (
                     <tr
                       key={ins.id}
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition"
+                      onTouchStart={() => {
+                        pulsacionLargaActivada.current = false;
+                        cancelarPulsacionLarga();
+                        temporizadorPulsacion.current = setTimeout(() => {
+                          pulsacionLargaActivada.current = true;
+                          setInsumoMenuMovil(ins);
+                        }, 550);
+                      }}
+                      onTouchEnd={cancelarPulsacionLarga}
+                      onTouchMove={cancelarPulsacionLarga}
+                      onContextMenu={(e) => {
+                        // En móvil, el menú propio sustituye al menú contextual del navegador.
+                        if (window.matchMedia('(max-width: 639px)').matches) {
+                          e.preventDefault();
+                          setInsumoMenuMovil(ins);
+                        }
+                      }}
+                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition select-none"
                     >
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -454,7 +487,10 @@ const calculoEnVivo = useMemo(() => {
                         <span className="text-[10px] text-slate-400">Mín: {ins.stockMinimo} {ins.unidadUso}</span>
                       </td>
 
-                      <td className="py-3 px-4 whitespace-nowrap text-center">
+                      <td
+                        className="py-3 px-4 whitespace-nowrap text-center"
+                        onTouchStart={(e) => e.stopPropagation()}
+                      >
                         <div className="inline-flex items-center gap-1">
                           <button
                             onClick={() => {
@@ -473,21 +509,21 @@ const calculoEnVivo = useMemo(() => {
                               setInsumoAAjustar(ins);
                               setNuevoStockAjuste(String(ins.stockActual));
                             }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                            className="hidden sm:inline-flex p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                             title="Ajustar stock físico"
                           >
                             <RefreshCw className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => handleOpenEditar(ins)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                            className="hidden sm:inline-flex p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                             title="Editar insumo"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => setInsumoAEliminar(ins)}
-                            className="p-1.5 rounded-lg text-rose-400 hover:text-rose-600 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                            className="hidden sm:inline-flex p-1.5 rounded-lg text-rose-400 hover:text-rose-600 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
                             title="Eliminar insumo"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -502,6 +538,74 @@ const calculoEnVivo = useMemo(() => {
           </table>
         </div>
       </div>
+
+      {/* Menú contextual móvil: se abre al mantener presionada una fila */}
+      {insumoMenuMovil && (
+        <div
+          className="fixed inset-0 z-[90] sm:hidden flex items-end bg-black/40"
+          onClick={() => setInsumoMenuMovil(null)}
+          onTouchMove={(e) => e.stopPropagation()}
+        >
+          <div
+            role="menu"
+            aria-label={`Acciones para ${insumoMenuMovil.nombre}`}
+            className="w-full rounded-t-2xl bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 pb-3 mb-2 border-b border-slate-200 dark:border-slate-700">
+              <div className="min-w-0">
+                <p className="text-xs text-slate-500 dark:text-slate-400">Acciones del insumo</p>
+                <p className="font-bold text-slate-900 dark:text-white truncate">{insumoMenuMovil.nombre}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInsumoMenuMovil(null)}
+                className="shrink-0 px-3 py-2 rounded-lg text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800"
+              >
+                Cerrar
+              </button>
+            </div>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setInsumoAAjustar(insumoMenuMovil);
+                setNuevoStockAjuste(String(insumoMenuMovil.stockActual));
+                setInsumoMenuMovil(null);
+              }}
+              className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <RefreshCw className="w-5 h-5" />
+              <span>Ajustar stock</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                handleOpenEditar(insumoMenuMovil);
+                setInsumoMenuMovil(null);
+              }}
+              className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <Edit2 className="w-5 h-5" />
+              <span>Editar insumo</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setInsumoAEliminar(insumoMenuMovil);
+                setInsumoMenuMovil(null);
+              }}
+              className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+            >
+              <Trash2 className="w-5 h-5" />
+              <span>Eliminar insumo</span>
+            </button>
+            <p className="mt-2 text-[11px] text-center text-slate-400">Mantén presionada otra fila para abrir sus acciones.</p>
+          </div>
+        </div>
+      )}
 
       {/* Modal Crear / Editar Insumo */}
       <Modal

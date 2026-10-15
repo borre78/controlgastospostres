@@ -136,8 +136,6 @@ interface AppContextType {
   }>;
 }
 
-const STORAGE_KEY_PREFIX = 'gastos_costos_v2_';
-
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -149,292 +147,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [productos, setProductos] = useState<ProductoVenta[]>([]);
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [gastos, setGastos] = useState<Gasto[]>([]);
-  const [categorias, setCategorias] = useState<CategoriaGasto[]>(CATEGORIAS_DEFAULT);
+  const [categorias, setCategorias] = useState<CategoriaGasto[]>([]);
   const [producciones, setProducciones] = useState<RegistroProduccion[]>([]);
   const [configuracion, setConfiguracion] = useState<ConfiguracionApp>(CONFIGURACION_DEFAULT);
   const [temaActual, setTemaActual] = useState<'light' | 'dark'>('light');
- const [datosLocalesCargados, setDatosLocalesCargados] = useState(false);
+
 
 
 
  
-useEffect(() => {
-  if (!datosLocalesCargados) return;
-
-  let cancelado = false;
-
-  const cargarDesdeFirebase = async () => {
-    try {
-      const usuario = auth.currentUser;
-
-      if (!usuario) {
-        console.warn('No hay sesión de Firebase. Se conservarán los datos locales.');
-        return;
-      }
-
-      await verificarAccesoNegocio(usuario.uid);
-
-      const [
-        insumosNube,
-        recetasNube,
-        productosNube,
-        ventasNube,
-        gastosNube,
-        categoriasNube,
-        produccionesNube,
-        configuracionNube,
-      ] = await Promise.all([
-        listarDocumentos('insumos'),
-        listarDocumentos('recetas'),
-        listarDocumentos('productos'),
-        listarDocumentos('ventas'),
-        listarDocumentos('gastos'),
-        listarDocumentos('categorias'),
-        listarDocumentos('producciones'),
-        obtenerDocumento('configuracion', 'general'),
-      ]);
-
-      if (cancelado) return;
-
-      // Solo sustituir listas cuando Firebase tenga documentos.
-      // Así no eliminamos accidentalmente información local
-      // si una colección de la nube todavía está vacía.
-      if (insumosNube.length > 0) {
-        setInsumos((locales) => {
-          const nube = insumosNube as unknown as Insumo[];
-          const idsNube = new Set(nube.map((item) => item.id));
-          return [...nube, ...locales.filter((item) => !idsNube.has(item.id))];
-        });
-      }
-
-      if (recetasNube.length > 0) {
-        setRecetas((locales) => {
-          const nube = recetasNube as unknown as Receta[];
-          const idsNube = new Set(nube.map((item) => item.id));
-          return [...nube, ...locales.filter((item) => !idsNube.has(item.id))];
-        });
-      }
-
-      if (productosNube.length > 0) {
-        setProductos((locales) => {
-          const nube = productosNube as unknown as ProductoVenta[];
-          const idsNube = new Set(nube.map((item) => item.id));
-          return [...nube, ...locales.filter((item) => !idsNube.has(item.id))];
-        });
-      }
-
-      if (ventasNube.length > 0) {
-        setVentas((locales) => {
-          const nube = ventasNube as unknown as Venta[];
-          const idsNube = new Set(nube.map((item) => item.id));
-          return [...nube, ...locales.filter((item) => !idsNube.has(item.id))];
-        });
-      }
-
-      if (gastosNube.length > 0) {
-        setGastos((locales) => {
-          const nube = gastosNube as unknown as Gasto[];
-          const idsNube = new Set(nube.map((item) => item.id));
-          return [...nube, ...locales.filter((item) => !idsNube.has(item.id))];
-        });
-      }
-
-      if (categoriasNube.length > 0) {
-        setCategorias((locales) => {
-          const nube = categoriasNube as unknown as CategoriaGasto[];
-          const idsNube = new Set(nube.map((item) => item.id));
-          return [...nube, ...locales.filter((item) => !idsNube.has(item.id))];
-        });
-      }
-
-      if (produccionesNube.length > 0) {
-        setProducciones((locales) => {
-          const nube = produccionesNube as unknown as RegistroProduccion[];
-          const idsNube = new Set(nube.map((item) => item.id));
-          return [...nube, ...locales.filter((item) => !idsNube.has(item.id))];
-        });
-      }
-
-      if (configuracionNube) {
-        setConfiguracion((actual) => ({
-          ...actual,
-          ...configuracionNube,
-        }) as ConfiguracionApp);
-      }
-
-      console.info('Lectura inicial de Firebase completada.');
-    } catch (error) {
-      console.error(
-        'No fue posible cargar los datos desde Firebase. Se conservarán los datos locales:',
-        error
-      );
-    } finally {
-      if (!cancelado) {
-        setIsLoaded(true);
-      }
-    }
-  };
-
-  void cargarDesdeFirebase();
-
-  return () => {
-    cancelado = true;
-  };
-}, [datosLocalesCargados]);
-
-
-  // Carga inicial desde localStorage con migración suave para productos con múltiples presentaciones
+  // Carga inicial: Firestore es la única fuente de datos del negocio.
+  // No se leen datos locales ni se agregan registros de demostración.
   useEffect(() => {
-    try {
-      // Intentar cargar v2, fallback a v1 si existe
-      const getStored = (key: string) => {
-        return (
-          localStorage.getItem(`${STORAGE_KEY_PREFIX}${key}`) ||
-          localStorage.getItem(`gastos_costos_v1_${key}`)
-        );
-      };
+    let cancelado = false;
 
-      const storedCfg = getStored('config');
-      const storedInsumos = getStored('insumos');
-      const storedRecetas = getStored('recetas');
-      const storedProductos = getStored('productos');
-      const storedVentas = getStored('ventas');
-      const storedGastos = getStored('gastos');
-      const storedCategorias = getStored('categorias');
-      const storedProducciones = getStored('producciones');
+    const cargarDesdeFirebase = async () => {
+      try {
+        const usuario = await obtenerUsuarioAutorizado();
+        await verificarAccesoNegocio(usuario.uid);
 
-      if (storedCfg) {
-        const parsed = JSON.parse(storedCfg);
-        setConfiguracion({ ...CONFIGURACION_DEFAULT, ...parsed });
-      }
-
-      const wasCleared = getStored('cleared') === 'true';
-
-      if (storedInsumos) {
-        setInsumos(JSON.parse(storedInsumos));
-      } else if (!wasCleared) {
-        setInsumos(SAMPLE_INSUMOS);
-      }
-
-      if (storedRecetas) {
-        setRecetas(JSON.parse(storedRecetas));
-      } else if (!wasCleared) {
-        setRecetas(SAMPLE_RECETAS);
-      }
-
-      if (storedVentas) {
-        setVentas(JSON.parse(storedVentas));
-      } else if (!wasCleared) {
-        setVentas(SAMPLE_VENTAS);
-      }
-
-      if (storedGastos) {
-        setGastos(JSON.parse(storedGastos));
-      } else if (!wasCleared) {
-        setGastos(SAMPLE_GASTOS);
-      }
-
-      if (storedCategorias) setCategorias(JSON.parse(storedCategorias));
-
-      if (storedProducciones) {
-        setProducciones(JSON.parse(storedProducciones));
-      } else if (!wasCleared) {
-        setProducciones([
-          {
-            id: 'prod-run-sample-01',
-            fecha: '2026-10-13',
-            recetaId: 'rec-pay-queso-clasico',
-            recetaNombre: 'Pay de Queso Horneado Clásico (Molde 24cm)',
-            tandas: 1,
-            unidadesProducidas: 8,
-            costoTotalTanda: 142.0,
-            descontoInventario: true,
-            notas: 'Tanda para pay completo y rebanadas',
-          },
-          {
-            id: 'prod-run-sample-02',
-            fecha: '2026-10-14',
-            recetaId: 'rec-arroz-con-leche',
-            recetaNombre: 'Arroz con Leche Cremoso Tradicional',
-            tandas: 1,
-            unidadesProducidas: 2000,
-            costoTotalTanda: 134.0,
-            descontoInventario: true,
-            notas: 'Tanda 2 Litros para medio litro y vasitos 6 oz',
-          },
+        const [
+          insumosNube,
+          recetasNube,
+          productosNube,
+          ventasNube,
+          gastosNube,
+          categoriasNube,
+          produccionesNube,
+          configuracionNube,
+        ] = await Promise.all([
+          listarDocumentos('insumos'),
+          listarDocumentos('recetas'),
+          listarDocumentos('productos'),
+          listarDocumentos('ventas'),
+          listarDocumentos('gastos'),
+          listarDocumentos('categorias'),
+          listarDocumentos('producciones'),
+          obtenerDocumento('configuracion', 'general'),
         ]);
-      }
 
-      if (storedProductos) {
-        const rawProds = JSON.parse(storedProductos);
-        // Normalización si el producto venía de v1 (sin array presentaciones)
-        const normalized: ProductoVenta[] = rawProds.map((p: any) => {
-          if (p.presentaciones && Array.isArray(p.presentaciones) && p.presentaciones.length > 0) {
-            return p;
-          }
-          const defaultPres: PresentacionComercial = {
-            id: `pres-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-            nombre: 'Presentación Única',
-            tipoCalculo: 'fraccion',
-            cantidadOVolumen: 1,
-            unidadMedida: 'unidad',
-            factorReceta: p.factorReceta || 1,
-            empaques: (p.empaqueAdicionalIds || []).map((e: any) => ({
-              insumoId: e.insumoId,
-              cantidad: e.cantidad,
-            })),
-            costoBaseReceta: p.costoBaseReceta || 0,
-            costoEmpaqueTotal: p.costoEmpaqueVenta || 0,
-            costoUnitarioTotal: p.costoUnitarioTotal || 0,
-            margenDeseadoPct: p.margenDeseadoPct || 50,
-            precioSugerido: p.precioSugerido || 0,
-            precioVentaReal: p.precioVentaReal || 0,
-            gananciaPorUnidad: p.gananciaPorUnidad || 0,
-            margenRealPct: p.margenRealPct || 0,
-            stockListo: p.stockListoParaVenta || 0,
-            activo: p.activo ?? true,
-          };
-          return {
-            id: p.id,
-            nombre: p.nombre,
-            descripcion: p.descripcion,
-            categoria: p.categoria,
-            recetaId: p.recetaId || '',
-            presentaciones: [defaultPres],
-            activo: p.activo ?? true,
-          };
-        });
-        setProductos(normalized);
-      } else if (!wasCleared) {
-        setProductos(SAMPLE_PRODUCTOS);
+        if (cancelado) return;
+
+        // Sustituir siempre las listas, incluso si Firebase devuelve [].
+        setInsumos(insumosNube as unknown as Insumo[]);
+        setRecetas(recetasNube as unknown as Receta[]);
+        setProductos(productosNube as unknown as ProductoVenta[]);
+        setVentas(ventasNube as unknown as Venta[]);
+        setGastos(gastosNube as unknown as Gasto[]);
+        setCategorias(categoriasNube as unknown as CategoriaGasto[]);
+        setProducciones(produccionesNube as unknown as RegistroProduccion[]);
+        setConfiguracion({
+          ...CONFIGURACION_DEFAULT,
+          ...(configuracionNube || {}),
+        } as ConfiguracionApp);
+
+        console.info('Carga inicial desde Firebase completada.');
+      } catch (error) {
+        console.error('No se pudieron cargar los datos desde Firebase:', error);
+      } finally {
+        if (!cancelado) setIsLoaded(true);
       }
-    } catch (e) {
-      console.error('Error al cargar datos locales:', e);
-    } finally {
-      setDatosLocalesCargados(true);
-    }
+    };
+
+    void cargarDesdeFirebase();
+    return () => { cancelado = true; };
   }, []);
 
-  // Persistencia automática al cambiar estados
-  useEffect(() => {
-    if (!isLoaded) return;
-    try {
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}config`, JSON.stringify(configuracion));
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}insumos`, JSON.stringify(insumos));
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}recetas`, JSON.stringify(recetas));
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}productos`, JSON.stringify(productos));
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}ventas`, JSON.stringify(ventas));
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}gastos`, JSON.stringify(gastos));
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}categorias`, JSON.stringify(categorias));
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}producciones`, JSON.stringify(producciones));
-    } catch (e) {
-      console.error('Error al persistir datos:', e);
-    }
-  }, [isLoaded, insumos, recetas, productos, ventas, gastos, categorias, producciones, configuracion]);
-
   // Sincronización incremental con Firestore.
-  // La primera fotografía se toma después de la carga inicial para no subir
-  // automáticamente los datos de ejemplo ni reemplazar datos existentes.
+  // La primera fotografía se toma después de cargar Firebase para evitar
+  // sincronizar estados iniciales antes de terminar la lectura.
   const ultimaFotoNube = useRef<{
     insumos: Insumo[];
     recetas: Receta[];
@@ -453,7 +234,7 @@ useEffect(() => {
       insumos, recetas, productos, ventas, gastos, categorias, producciones, configuracion
     };
 
-    // Establecer línea base; la lectura de Firebase/localStorage ya terminó.
+    // Establecer línea base después de completar la lectura de Firebase.
     if (ultimaFotoNube.current === null) {
       ultimaFotoNube.current = actual;
       return;
@@ -1189,7 +970,6 @@ const updatePresentacion = (
         notas: 'Tanda 2 Litros para medio litro y vasitos 6 oz',
       },
     ]);
-    localStorage.removeItem(`${STORAGE_KEY_PREFIX}cleared`);
   };
 
   /**
@@ -1210,7 +990,6 @@ const updatePresentacion = (
     setVentas((prev) => prev.filter((v) => !v.esDemostracion));
     setGastos((prev) => prev.filter((g) => !g.esDemostracion));
     setProducciones((prev) => prev.filter((pr) => !pr.id.startsWith('prod-run-sample')));
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}cleared`, 'true');
   };
 
   const reiniciarDatos = () => {
@@ -1222,10 +1001,6 @@ const updatePresentacion = (
     setProducciones([]);
     setCategorias(CATEGORIAS_DEFAULT);
     setConfiguracion(CONFIGURACION_DEFAULT);
-    Object.keys(localStorage)
-      .filter((k) => k.startsWith('gastos_costos_'))
-      .forEach((k) => localStorage.removeItem(k));
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}cleared`, 'true');
   };
 
   /**
