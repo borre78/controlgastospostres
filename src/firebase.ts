@@ -4,7 +4,7 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyA6oZw5SQ4w2gw_T776-SnLgXCs3290mdk",
+  apiKey: "AIzaSyA6oZwS5Q4w2gw_T776-SnLgXcs3209mdk",
   authDomain: "postresmila-4bf18.firebaseapp.com",
   projectId: "postresmila-4bf18",
   storageBucket: "postresmila-4bf18.firebasestorage.app",

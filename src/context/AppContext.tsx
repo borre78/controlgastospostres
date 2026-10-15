@@ -20,6 +20,26 @@ import {
 } from '../data/sampleBakeryData';
 import { calcularPrecioRecomendado } from '../utils/formatters';
 
+import { auth } from '../firebase';
+import {
+  listarDocumentos,
+  obtenerDocumento,
+  verificarAccesoNegocio,
+  guardarDocumento,
+  eliminarDocumento,
+} from '../services/firestoreService';
+
+const obtenerUsuarioAutorizado = async () => {
+  const usuario = auth.currentUser;
+
+  if (!usuario) {
+    throw new Error('Debes iniciar sesión para guardar los cambios.');
+  }
+
+  await verificarAccesoNegocio(usuario.uid);
+  return usuario;
+}
+
 interface AppContextType {
   // Estado
   insumos: Insumo[];
@@ -126,6 +146,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [producciones, setProducciones] = useState<RegistroProduccion[]>([]);
   const [configuracion, setConfiguracion] = useState<ConfiguracionApp>(CONFIGURACION_DEFAULT);
   const [temaActual, setTemaActual] = useState<'light' | 'dark'>('light');
+ const [datosLocalesCargados, setDatosLocalesCargados] = useState(false);
+
+
+
+ 
+useEffect(() => {
+  if (!datosLocalesCargados) return;
+
+  let cancelado = false;
+
+  const cargarDesdeFirebase = async () => {
+    try {
+      const usuario = auth.currentUser;
+
+      if (!usuario) {
+        console.warn('No hay sesión de Firebase. Se conservarán los datos locales.');
+        return;
+      }
+
+      await verificarAccesoNegocio(usuario.uid);
+
+      const [
+        insumosNube,
+        categoriasNube,
+        configuracionNube,
+      ] = await Promise.all([
+        listarDocumentos('insumos'),
+        listarDocumentos('categorias'),
+        obtenerDocumento('configuracion', 'general'),
+      ]);
+
+      if (cancelado) return;
+
+      // Solo sustituir listas cuando Firebase tenga documentos.
+      // Así no eliminamos accidentalmente información local
+      // si una colección de la nube todavía está vacía.
+      if (insumosNube.length > 0) {
+        setInsumos(insumosNube as unknown as Insumo[]);
+      }
+
+      if (categoriasNube.length > 0) {
+        setCategorias(categoriasNube as unknown as CategoriaGasto[]);
+      }
+
+      if (configuracionNube) {
+        setConfiguracion((actual) => ({
+          ...actual,
+          ...configuracionNube,
+        }) as ConfiguracionApp);
+      }
+
+      console.info('Lectura inicial de Firebase completada.');
+    } catch (error) {
+      console.error(
+        'No fue posible cargar los datos desde Firebase. Se conservarán los datos locales:',
+        error
+      );
+    } finally {
+      if (!cancelado) {
+        setIsLoaded(true);
+      }
+    }
+  };
+
+  void cargarDesdeFirebase();
+
+  return () => {
+    cancelado = true;
+  };
+}, [datosLocalesCargados]);
+
 
   // Carga inicial desde localStorage con migración suave para productos con múltiples presentaciones
   useEffect(() => {
@@ -255,7 +346,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.error('Error al cargar datos locales:', e);
     } finally {
-      setIsLoaded(true);
+      setDatosLocalesCargados(true);
     }
   }, []);
 

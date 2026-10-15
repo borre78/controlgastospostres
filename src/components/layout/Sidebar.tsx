@@ -10,6 +10,7 @@ import {
   BarChart3,
   Settings,
   Sparkles,
+  CloudUpload,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -93,6 +94,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       label: 'Configuración',
       shortLabel: 'Ajustes',
       icon: Settings,
+    },
+    {
+      id: 'migration',
+      label: 'Migrar a Firebase',
+      shortLabel: 'Migrar',
+      icon: CloudUpload,
     },
   ];
 
