@@ -68,11 +68,15 @@ export interface Receta {
   tiempoElaboracionMinutos: number;
   ingredientes: IngredienteReceta[];
   empaques: EmpaqueReceta[];
+  desechables?: EmpaqueReceta[];
+  otrosInsumos?: EmpaqueReceta[];
   indirectos: CostosIndirectosReceta;
   
   // Totales calculados
   costoIngredientes: number;
   costoEmpaques: number;
+  costoDesechables?: number;
+  costoOtrosInsumos?: number;
   costoIndirectos: number;
   costoTotalReceta: number; // Suma de todos los anteriores
   costoPorUnidad: number; // costoTotalReceta / rendimientoCantidad

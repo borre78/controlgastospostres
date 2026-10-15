@@ -348,7 +348,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteInsumo = (id: string): boolean => {
     const usadaEnRecetas = recetas.filter((r) =>
-      r.ingredientes.some((i) => i.insumoId === id) || r.empaques.some((e) => e.insumoId === id)
+      (r.ingredientes || []).some((i) => i.insumoId === id) ||
+      (r.empaques || []).some((e) => e.insumoId === id) ||
+      (r.desechables || []).some((e) => e.insumoId === id) ||
+      (r.otrosInsumos || []).some((e) => e.insumoId === id)
     );
     const usadaEnPresentaciones = productos.some((p) =>
       p.presentaciones.some((pres) => pres.empaques.some((emp) => emp.insumoId === id))
@@ -479,13 +482,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { ...emp, costoCalculado };
       });
 
+      let costoDesechables = 0;
+      const nuevosDesechables = (receta.desechables || []).map((item) => {
+        const costoUnit = insumoMap.get(item.insumoId) || 0;
+        const costoCalculado = item.cantidad * costoUnit;
+        costoDesechables += costoCalculado;
+        return { ...item, costoCalculado };
+      });
+
+      let costoOtrosInsumos = 0;
+      const nuevosOtrosInsumos = (receta.otrosInsumos || []).map((item) => {
+        const costoUnit = insumoMap.get(item.insumoId) || 0;
+        const costoCalculado = item.cantidad * costoUnit;
+        costoOtrosInsumos += costoCalculado;
+        return { ...item, costoCalculado };
+      });
+
       const costoIndirectos =
         (receta.indirectos?.costoGas || 0) +
         (receta.indirectos?.costoLuz || 0) +
         (receta.indirectos?.costoManoObra || 0) +
         (receta.indirectos?.otrosCostosFijos || 0);
 
-      const costoTotalReceta = costoIngredientes + costoEmpaques + costoIndirectos;
+      const costoTotalReceta = costoIngredientes + costoEmpaques + costoDesechables + costoOtrosInsumos + costoIndirectos;
       const rendimiento = receta.rendimientoCantidad > 0 ? receta.rendimientoCantidad : 1;
       const costoPorUnidad = costoTotalReceta / rendimiento;
 
@@ -493,8 +512,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...receta,
         ingredientes: nuevosIngredientes,
         empaques: nuevosEmpaques,
+        desechables: nuevosDesechables,
+        otrosInsumos: nuevosOtrosInsumos,
         costoIngredientes,
         costoEmpaques,
+        costoDesechables,
+        costoOtrosInsumos,
         costoIndirectos,
         costoTotalReceta,
         costoPorUnidad,
@@ -817,33 +840,35 @@ const updatePresentacion = (
     const insumoMap = new Map(insumos.map((i) => [i.id, i]));
     const faltantes: { nombre: string; requerido: number; disponible: number; unidad: string }[] = [];
 
+    const requerimientosPorInsumo = new Map<string, number>();
+
+    const consumosReceta = [
+      ...(receta.ingredientes || []),
+      ...(receta.empaques || []),
+      ...(receta.desechables || []),
+      ...(receta.otrosInsumos || []),
+    ];
+    
+    for (const item of consumosReceta) {
+      const requerido = item.cantidad * tandas;
+    
+      requerimientosPorInsumo.set(
+        item.insumoId,
+        (requerimientosPorInsumo.get(item.insumoId) || 0) + requerido
+      );
+    }
+
     if (descontarStock) {
-      for (const ing of receta.ingredientes) {
-        const ins = insumoMap.get(ing.insumoId);
-        if (ins) {
-          const requerido = ing.cantidad * tandas;
-          if (ins.stockActual < requerido) {
-            faltantes.push({
-              nombre: ins.nombre,
-              requerido,
-              disponible: ins.stockActual,
-              unidad: ins.unidadUso,
-            });
-          }
-        }
-      }
-      for (const emp of receta.empaques || []) {
-        const ins = insumoMap.get(emp.insumoId);
-        if (ins) {
-          const requerido = emp.cantidad * tandas;
-          if (ins.stockActual < requerido) {
-            faltantes.push({
-              nombre: ins.nombre,
-              requerido,
-              disponible: ins.stockActual,
-              unidad: ins.unidadUso,
-            });
-          }
+      for (const [insumoId, requerido] of requerimientosPorInsumo) {
+        const ins = insumoMap.get(insumoId);
+      
+        if (ins && ins.stockActual < requerido) {
+          faltantes.push({
+            nombre: ins.nombre,
+            requerido,
+            disponible: ins.stockActual,
+            unidad: ins.unidadUso,
+          });
         }
       }
     }
@@ -856,16 +881,12 @@ const updatePresentacion = (
       };
     }
 
-    // Descontar insumos
+    // Descontar ingredientes, empaques, desechables y otros insumos
     if (descontarStock) {
       setInsumos((prev) =>
         prev.map((ins) => {
-          const ingUsado = receta.ingredientes.find((i) => i.insumoId === ins.id);
-          const empUsado = (receta.empaques || []).find((e) => e.insumoId === ins.id);
-          let consumoTotal = 0;
-          if (ingUsado) consumoTotal += ingUsado.cantidad * tandas;
-          if (empUsado) consumoTotal += empUsado.cantidad * tandas;
-
+          const consumoTotal = requerimientosPorInsumo.get(ins.id) || 0;
+        
           if (consumoTotal > 0) {
             return {
               ...ins,
@@ -873,6 +894,7 @@ const updatePresentacion = (
               fechaActualizacion: new Date().toISOString().split('T')[0],
             };
           }
+        
           return ins;
         })
       );

@@ -63,6 +63,14 @@ export const RecipesView: React.FC = () => {
     { insumoId: string; cantidad: number }[]
   >([]);
 
+  const [desechables, setDesechables] = useState<
+    { insumoId: string; cantidad: number }[]
+  >([]);
+
+  const [otrosInsumos, setOtrosInsumos] = useState<
+    { insumoId: string; cantidad: number }[]
+  >([]);
+
   // Costos Indirectos
   const [minutosGas, setMinutosGas] = useState('45');
   const [costoHoraGas, setCostoHoraGas] = useState(
@@ -87,12 +95,20 @@ export const RecipesView: React.FC = () => {
   }, [insumos]);
 
   const insumosIngredientes = useMemo(() => {
-    return insumos.filter((i) => i.tipo === 'ingrediente' || i.tipo === 'otro');
-  }, [insumos]);
+  return insumos.filter((i) => i.tipo === 'ingrediente');
+}, [insumos]);
 
-  const insumosEmpaques = useMemo(() => {
-    return insumos.filter((i) => i.tipo === 'empaque' || i.tipo === 'desechable');
-  }, [insumos]);
+const insumosEmpaques = useMemo(() => {
+  return insumos.filter((i) => i.tipo === 'empaque');
+}, [insumos]);
+
+const insumosDesechables = useMemo(() => {
+  return insumos.filter((i) => i.tipo === 'desechable');
+}, [insumos]);
+
+const insumosOtros = useMemo(() => {
+  return insumos.filter((i) => i.tipo === 'otro');
+}, [insumos]);
 
   // Cálculos reactivos en vivo para el modal
   const calculosEnVivo = useMemo(() => {
@@ -114,6 +130,26 @@ export const RecipesView: React.FC = () => {
       return { ...emp, costoCalculado: costo };
     });
 
+    
+    let costoDesechables = 0;
+    const listaDesechablesCalculados = desechables.map((item) => {
+      const ins = insumoMap.get(item.insumoId);
+      const costoUnit = ins ? ins.costoPorUnidadUso : 0;
+      const costo = item.cantidad * costoUnit;
+      costoDesechables += costo;
+      return { ...item, costoCalculado: costo };
+    });
+
+    let costoOtrosInsumos = 0;
+    const listaOtrosInsumosCalculados = otrosInsumos.map((item) => {
+      const ins = insumoMap.get(item.insumoId);
+      const costoUnit = ins ? ins.costoPorUnidadUso : 0;
+      const costo = item.cantidad * costoUnit;
+      costoOtrosInsumos += costo;
+      return { ...item, costoCalculado: costo };
+    });
+
+
     const mGas = parseFloat(minutosGas) || 0;
     const cHGas = parseFloat(costoHoraGas) || 0;
     const cGas = (mGas / 60) * cHGas;
@@ -129,13 +165,15 @@ export const RecipesView: React.FC = () => {
     const cOtros = parseFloat(otrosCostosFijos) || 0;
 
     const costoInd = cGas + cLuz + cMano + cOtros;
-    const costoTotal = costoIng + costoEmp + costoInd;
+    const costoTotal = costoIng + costoEmp + costoDesechables + costoOtrosInsumos + costoInd;
     const rendimiento = parseFloat(rendimientoCantidad) || 1;
     const costoPorUnidad = rendimiento > 0 ? costoTotal / rendimiento : 0;
 
     return {
       costoIng,
       costoEmp,
+      costoDesechables,
+      costoOtrosInsumos,
       costoInd,
       costoTotal,
       costoPorUnidad,
@@ -145,10 +183,14 @@ export const RecipesView: React.FC = () => {
       cOtros,
       listaIngCalculados,
       listaEmpCalculados,
+      listaDesechablesCalculados,
+      listaOtrosInsumosCalculados,
     };
   }, [
     ingredientes,
     empaques,
+    desechables,
+    otrosInsumos,
     insumoMap,
     minutosGas,
     costoHoraGas,
@@ -169,6 +211,8 @@ export const RecipesView: React.FC = () => {
     setTiempoElaboracion('60');
     setIngredientes([]);
     setEmpaques([]);
+    setDesechables([]);
+    setOtrosInsumos([]);
     setMinutosGas('45');
     setCostoHoraGas(String(configuracion.costoHoraGasDefault || 14));
     setMinutosLuz('20');
@@ -188,6 +232,8 @@ export const RecipesView: React.FC = () => {
     setTiempoElaboracion(String(rec.tiempoElaboracionMinutos));
     setIngredientes(rec.ingredientes.map((i) => ({ insumoId: i.insumoId, cantidad: i.cantidad })));
     setEmpaques((rec.empaques || []).map((e) => ({ insumoId: e.insumoId, cantidad: e.cantidad })));
+    setDesechables((rec.desechables || []).map((e) => ({insumoId: e.insumoId,cantidad: e.cantidad})));
+    setOtrosInsumos((rec.otrosInsumos || []).map((e) => ({insumoId: e.insumoId,cantidad: e.cantidad})));
     setMinutosGas(String(rec.indirectos?.minutosGas || 0));
     setCostoHoraGas(String(rec.indirectos?.costoPorHoraGas || configuracion.costoHoraGasDefault));
     setMinutosLuz(String(rec.indirectos?.minutosLuz || 0));
@@ -215,6 +261,36 @@ export const RecipesView: React.FC = () => {
     }
     setEmpaques((prev) => [...prev, { insumoId: primerEmpaque.id, cantidad: 1 }]);
   };
+
+  
+const handleAddDesechableFila = () => {
+  const primer = insumosDesechables[0];
+
+  if (!primer) {
+    alert('Registra al menos un insumo de tipo Desechable en el catálogo.');
+    return;
+  }
+
+  setDesechables((prev) => [
+    ...prev,
+    { insumoId: primer.id, cantidad: 1 },
+  ]);
+};
+
+const handleAddOtroInsumoFila = () => {
+  const primer = insumosOtros[0];
+
+  if (!primer) {
+    alert('Registra al menos un insumo de tipo Otro en el catálogo.');
+    return;
+  }
+
+  setOtrosInsumos((prev) => [
+    ...prev,
+    { insumoId: primer.id, cantidad: 1 },
+  ]);
+};
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -251,6 +327,10 @@ export const RecipesView: React.FC = () => {
         tiempoElaboracionMinutos: parseFloat(tiempoElaboracion) || 0,
         ingredientes: calculosEnVivo.listaIngCalculados,
         empaques: calculosEnVivo.listaEmpCalculados,
+        desechables: calculosEnVivo.listaDesechablesCalculados,
+        otrosInsumos: calculosEnVivo.listaOtrosInsumosCalculados,
+        costoDesechables: calculosEnVivo.costoDesechables,
+        costoOtrosInsumos: calculosEnVivo.costoOtrosInsumos,
         indirectos: indirectosData,
         costoIngredientes: calculosEnVivo.costoIng,
         costoEmpaques: calculosEnVivo.costoEmp,
@@ -267,6 +347,10 @@ export const RecipesView: React.FC = () => {
         tiempoElaboracionMinutos: parseFloat(tiempoElaboracion) || 0,
         ingredientes: calculosEnVivo.listaIngCalculados,
         empaques: calculosEnVivo.listaEmpCalculados,
+        desechables: calculosEnVivo.listaDesechablesCalculados,
+        otrosInsumos: calculosEnVivo.listaOtrosInsumosCalculados,
+        costoDesechables: calculosEnVivo.costoDesechables,
+        costoOtrosInsumos: calculosEnVivo.costoOtrosInsumos,
         indirectos: indirectosData,
         costoIngredientes: calculosEnVivo.costoIng,
         costoEmpaques: calculosEnVivo.costoEmp,
@@ -365,12 +449,35 @@ export const RecipesView: React.FC = () => {
                     <span className="font-semibold">{formatMXN(rec.costoIngredientes)}</span>
                   </div>
 
+                  
                   <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
                     <span className="flex items-center gap-1.5">
                       <Package className="w-3.5 h-3.5 text-blue-500" />
-                      Empaques / Insumos:
+                      Empaques:
                     </span>
-                    <span className="font-semibold">{formatMXN(rec.costoEmpaques)}</span>
+                    <span className="font-semibold">
+                      {formatMXN(rec.costoEmpaques)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+                    <span className="flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-amber-500" />
+                      Desechables:
+                    </span>
+                    <span className="font-semibold">
+                      {formatMXN(rec.costoDesechables ?? 0)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+                    <span className="flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-purple-500" />
+                      Otros insumos:
+                    </span>
+                    <span className="font-semibold">
+                      {formatMXN(rec.costoOtrosInsumos ?? 0)}
+                    </span>
                   </div>
 
                   <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
@@ -378,8 +485,11 @@ export const RecipesView: React.FC = () => {
                       <Flame className="w-3.5 h-3.5 text-rose-500" />
                       Gas, Luz y Mano de obra:
                     </span>
-                    <span className="font-semibold">{formatMXN(rec.costoIndirectos)}</span>
+                    <span className="font-semibold">
+                      {formatMXN(rec.costoIndirectos)}
+                    </span>
                   </div>
+
 
                   <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between font-bold text-slate-900 dark:text-white">
                     <span>Costo Total Tanda:</span>
@@ -529,7 +639,7 @@ export const RecipesView: React.FC = () => {
                         }}
                         className="flex-1 min-w-[140px] px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
                       >
-                        {insumos.map((i) => (
+                        {insumosIngredientes.map((i) => (
                           <option key={i.id} value={i.id}>
                             {i.nombre} ({formatCostoUnitario(i.costoPorUnidadUso)}/{i.unidadUso})
                           </option>
@@ -623,7 +733,7 @@ export const RecipesView: React.FC = () => {
                         }}
                         className="flex-1 min-w-[140px] px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
                       >
-                        {insumos.map((i) => (
+                        {insumosEmpaques.map((i) => (
                           <option key={i.id} value={i.id}>
                             {i.nombre} ({formatCostoUnitario(i.costoPorUnidadUso)}/{i.unidadUso})
                           </option>
@@ -665,7 +775,209 @@ export const RecipesView: React.FC = () => {
             )}
           </div>
 
-          {/* SECCIÓN 3: COSTOS INDIRECTOS (GAS, LUZ, MANO DE OBRA) */}
+          {/* SECCIÓN 3: DESECHABLES */}
+          <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Package className="w-4 h-4 text-amber-500" />
+                  3. Desechables
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Vasos, cucharas, servilletas, bolsas y otros materiales desechables
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddDesechableFila}
+                className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold"
+              >
+                + Añadir Desechable
+              </button>
+            </div>
+
+            {desechables.length === 0 ? (
+              <p className="text-xs text-slate-400 italic py-2">
+                No has agregado desechables.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {desechables.map((item, idx) => {
+                  const ins = insumoMap.get(item.insumoId);
+                  const costoCalc = ins ? item.cantidad * ins.costoPorUnidadUso : 0;
+                
+                  return (
+                    <div
+                      key={idx}
+                      className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs"
+                    >
+                      <select
+                        value={item.insumoId}
+                        onChange={(e) => {
+                          const newId = e.target.value;
+                          setDesechables((prev) =>
+                            prev.map((fila, i) =>
+                              i === idx ? { ...fila, insumoId: newId } : fila
+                            )
+                          );
+                        }}
+                        className="flex-1 min-w-[140px] px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+                      >
+                        {insumosDesechables.map((i) => (
+                          <option key={i.id} value={i.id}>
+                            {i.nombre} ({formatCostoUnitario(i.costoPorUnidadUso)}/{i.unidadUso})
+                          </option>
+                        ))}
+                      </select>
+                      
+                      <div className="flex items-center gap-1 w-24 shrink-0">
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          value={item.cantidad}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setDesechables((prev) =>
+                              prev.map((fila, i) =>
+                                i === idx ? { ...fila, cantidad: val } : fila
+                              )
+                            );
+                          }}
+                          className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold text-right"
+                        />
+                        <span className="text-slate-500 font-medium">
+                          {ins?.unidadUso || 'pza'}
+                        </span>
+                      </div>
+                        
+                      <div className="w-24 text-right font-mono font-bold text-slate-800 dark:text-slate-200 shrink-0">
+                        {formatMXN(costoCalc)}
+                      </div>
+                        
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDesechables((prev) => prev.filter((_, i) => i !== idx))
+                        }
+                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="text-right text-xs font-bold text-slate-700 dark:text-slate-300">
+              Subtotal Desechables: {formatMXN(calculosEnVivo.costoDesechables)}
+            </div>
+          </div>
+
+          
+          {/* SECCIÓN 4: OTROS INSUMOS */}
+          <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Package className="w-4 h-4 text-purple-500" />
+                  4. Otros insumos
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Materiales auxiliares que no corresponden a ingredientes, empaques o desechables
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddOtroInsumoFila}
+                className="px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold"
+              >
+                + Añadir insumo
+              </button>
+            </div>
+
+            {otrosInsumos.length === 0 ? (
+              <p className="text-xs text-slate-400 italic py-2">
+                No has agregado otros insumos.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {otrosInsumos.map((item, idx) => {
+                  const ins = insumoMap.get(item.insumoId);
+                  const costoCalc = ins ? item.cantidad * ins.costoPorUnidadUso : 0;
+                
+                  return (
+                    <div
+                      key={idx}
+                      className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs"
+                    >
+                      <select
+                        value={item.insumoId}
+                        onChange={(e) => {
+                          const newId = e.target.value;
+                          setOtrosInsumos((prev) =>
+                            prev.map((fila, i) =>
+                              i === idx ? { ...fila, insumoId: newId } : fila
+                            )
+                          );
+                        }}
+                        className="flex-1 min-w-[140px] px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+                      >
+                        {insumosOtros.map((i) => (
+                          <option key={i.id} value={i.id}>
+                            {i.nombre} ({formatCostoUnitario(i.costoPorUnidadUso)}/{i.unidadUso})
+                          </option>
+                        ))}
+                      </select>
+                      
+                      <div className="flex items-center gap-1 w-24 shrink-0">
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          value={item.cantidad}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setOtrosInsumos((prev) =>
+                              prev.map((fila, i) =>
+                                i === idx ? { ...fila, cantidad: val } : fila
+                              )
+                            );
+                          }}
+                          className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold text-right"
+                        />
+                        <span className="text-slate-500 font-medium">
+                          {ins?.unidadUso || 'pza'}
+                        </span>
+                      </div>
+                        
+                      <div className="w-24 text-right font-mono font-bold text-slate-800 dark:text-slate-200 shrink-0">
+                        {formatMXN(costoCalc)}
+                      </div>
+                        
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOtrosInsumos((prev) => prev.filter((_, i) => i !== idx))
+                        }
+                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="text-right text-xs font-bold text-slate-700 dark:text-slate-300">
+              Subtotal Otros insumos: {formatMXN(calculosEnVivo.costoOtrosInsumos)}
+            </div>
+          </div>
+
+
+          {/* SECCIÓN 5: COSTOS INDIRECTOS (GAS, LUZ, MANO DE OBRA) */}
           <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
             <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
               <Flame className="w-4 h-4 text-rose-500" />
