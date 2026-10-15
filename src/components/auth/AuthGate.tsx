@@ -37,7 +37,13 @@ export function AuthGate({ children }: AuthGateProps) {
       setChecking(true);
 
       try {
-        const profileRef = doc(db, 'usuarios', currentUser.uid);
+        const profileRef = doc(
+  db,
+  'negocios',
+  'postresmila',
+  'miembros',
+  currentUser.uid
+);
         const profileSnapshot = await getDoc(profileRef);
 
         if (!active) return;

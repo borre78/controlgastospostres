@@ -19,6 +19,7 @@ import { SettingsView } from './components/settings/SettingsView';
 import { OfflineIndicator } from './components/common/OfflineIndicator';
 import { AuthGate } from './components/auth/AuthGate';
 import { MigracionFirebaseView } from './components/admin/MigracionFirebaseView';
+import { AdminUsuariosView } from './components/admin/AdminUsuariosView';
 
 function MainApp() {
   const [activeTab, setActiveTab] = useState(() => {
@@ -60,8 +61,10 @@ useEffect(() => {
         return <ReportsView />;
       case 'settings':
         return <SettingsView />;
-        case 'migration':
-          return <MigracionFirebaseView />;
+      case 'migration':
+        return <MigracionFirebaseView />;      
+      case 'users':
+            return <AdminUsuariosView />;
       default:
         return <DashboardView onNavigate={setActiveTab} />;
     }

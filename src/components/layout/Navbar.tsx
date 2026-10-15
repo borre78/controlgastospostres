@@ -1,7 +1,12 @@
 import React from 'react';
-import { Sun, Moon, Database, Sparkles, ChefHat } from 'lucide-react';
+import { Sun, Moon, Database, Sparkles, ChefHat,ChevronDown, LogOut,UserRound  } from 'lucide-react';
+import { signOut } from 'firebase/auth';
 import { useApp } from '../../context/AppContext';
 import { PWAInstallButton } from '../common/PWAInstallButton';
+
+import { useEffect, useState } from 'react';
+import { onAuthStateChanged, type User } from 'firebase/auth';
+import { auth } from '../../firebase';
 
 interface NavbarProps {
   onOpenQuickNew?: () => void;
@@ -11,6 +16,33 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ setActiveTab }) => {
   const { configuracion, toggleTema, temaActual, insumos } = useApp();
+  const cerrarSesion = async () => {
+  try {
+    await signOut(auth);
+  } catch (error) {
+    console.error('Error al cerrar sesión:', error);
+    alert('No fue posible cerrar la sesión. Intenta nuevamente.');
+  }
+};
+
+const [usuarioActual, setUsuarioActual] = useState<User | null>(
+  auth.currentUser
+);
+const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false);
+
+useEffect(() => {
+  const unsubscribe = onAuthStateChanged(auth, (user) => {
+    setUsuarioActual(user);
+    setMenuUsuarioAbierto(false);
+  });
+
+  return () => unsubscribe();
+}, []);
+
+const nombreUsuario =
+  usuarioActual?.displayName ||
+  usuarioActual?.email ||
+  'Usuario';
 
   return (
     <header className="sticky top-0 z-30 w-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
@@ -81,6 +113,85 @@ export const Navbar: React.FC<NavbarProps> = ({ setActiveTab }) => {
               <Moon className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />
             )}
           </button>
+
+          
+            {/* Menú del usuario */}
+            <div className="relative">
+              
+              <button
+                type="button"
+                onClick={() => setMenuUsuarioAbierto((abierto) => !abierto)}
+                aria-expanded={menuUsuarioAbierto}
+                aria-haspopup="menu"
+                title={nombreUsuario}
+                className="inline-flex items-center justify-center gap-1.5
+                  rounded-xl border border-slate-200 dark:border-slate-700
+                  bg-white dark:bg-slate-800
+                  px-2 py-2 sm:px-3
+                  text-sm font-medium text-slate-700 dark:text-slate-200
+                  hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+              >
+                <UserRound className="h-4 w-4 shrink-0" />
+
+                <span className="hidden sm:inline max-w-[150px] truncate">
+                  {nombreUsuario}
+                </span>
+
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 transition-transform ${
+                    menuUsuarioAbierto ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+                
+              {menuUsuarioAbierto && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Cerrar menú"
+                    className="fixed inset-0 z-40 cursor-default"
+                    onClick={() => setMenuUsuarioAbierto(false)}
+                  />
+
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-full z-50 mt-2 w-52
+                      rounded-xl border border-slate-200 dark:border-slate-700
+                      bg-white dark:bg-slate-900 p-1.5 shadow-xl"
+                  >
+                    <div className="border-b border-slate-100 dark:border-slate-800
+                      px-3 py-2">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Sesión iniciada como
+                      </p>
+                      <p className="truncate text-sm font-medium text-slate-800
+                        dark:text-slate-100">
+                        {nombreUsuario}
+                      </p>
+                    </div>
+              
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={async () => {
+                        setMenuUsuarioAbierto(false);
+                        await cerrarSesion();
+                      }}
+                      className="mt-1 flex w-full items-center gap-2 rounded-lg
+                        px-3 py-2.5 text-sm font-medium text-red-600
+                        hover:bg-red-50 dark:text-red-400
+                        dark:hover:bg-red-950/40 transition"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Cerrar sesión
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+
         </div>
       </div>
     </header>

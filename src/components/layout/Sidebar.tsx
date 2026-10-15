@@ -13,6 +13,7 @@ import {
   CloudUpload,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { Users } from 'lucide-react';
 
 export interface NavItem {
   id: string;
@@ -100,6 +101,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       label: 'Migrar a Firebase',
       shortLabel: 'Migrar',
       icon: CloudUpload,
+    },
+    {
+      id: 'users',
+      label: 'Administración de usuarios',
+      shortLabel: 'Usuarios',
+      icon: Users,
     },
   ];
 
