@@ -16,7 +16,7 @@ import {
   TrendingDown,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Insumo, TipoInsumo, UnidadMedida, FormaPago } from '../../types';
+import { Insumo, TipoInsumo, UnidadMedida, FormaPago, Gasto } from '../../types';
 import {
   formatMXN,
   formatCostoUnitario,
@@ -26,21 +26,46 @@ import {
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 
+
 export const IngredientsView: React.FC = () => {
   const {
     insumos,
+    gastos,
     addInsumo,
     updateInsumo,
     deleteInsumo,
     ajustarStockInsumo,
     reabastecerInsumo,
+    registrarCompraHistoricaInsumo,
     recalcularTodasLasRecetas,
   } = useApp();
+
+  const insumosConCompraHistoricaRegistrada = new Set(
+    gastos
+      .filter(
+        (gasto: Gasto) =>
+          gasto.insumoIdRelacionado &&
+          gasto.descripcion.startsWith('Compra inicial de insumo:')
+      )
+      .map((gasto: Gasto) => gasto.insumoIdRelacionado)
+  );
+
+const insumosPendientesCompraHistorica = insumos.filter(
+  (insumo) => !insumosConCompraHistoricaRegistrada.has(insumo.id)
+);
 
   // Filtros
   const [busqueda, setBusqueda] = useState('');
   const [filtroTipo, setFiltroTipo] = useState<TipoInsumo | 'todos'>('todos');
   const [filtroStockBajo, setFiltroStockBajo] = useState(false);
+
+  // Registro de compras históricas
+  const [fechaCompraHistorica, setFechaCompraHistorica] = useState(
+    new Date().toISOString().split('T')[0]
+  );
+
+  const [formaPagoHistorica, setFormaPagoHistorica] =
+    useState<FormaPago>('efectivo');
 
   // Modal Insumo (Crear / Editar)
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -230,6 +255,36 @@ const calculoEnVivo = useMemo(() => {
     setInsumoAReabastecer(null);
   };
 
+  
+  const handleRegistrarComprasHistoricas = () => {
+    if (insumosPendientesCompraHistorica.length === 0) {
+      alert('Todos los insumos ya tienen registrada su compra inicial.');
+      return;
+    }
+
+    const confirmar = window.confirm(
+      `Se registrarán ${insumosPendientesCompraHistorica.length} compras históricas por un total de ${formatMXN(
+        insumosPendientesCompraHistorica.reduce(
+          (total, insumo) => total + insumo.precioCompra,
+          0
+        )
+      )}. No se modificarán las existencias. ¿Deseas continuar?`
+    );
+
+    if (!confirmar) return;
+
+    insumosPendientesCompraHistorica.forEach((insumo) => {
+      registrarCompraHistoricaInsumo(
+        insumo,
+        fechaCompraHistorica,
+        formaPagoHistorica
+      );
+    });
+
+    alert('Las compras históricas se registraron correctamente.');
+  };
+
+
   const handleConfirmAjusteStock = (e: React.FormEvent) => {
     e.preventDefault();
     if (!insumoAAjustar) return;
@@ -293,6 +348,66 @@ const calculoEnVivo = useMemo(() => {
           <span>Nuevo Insumo</span>
         </button>
       </div>
+
+      
+      {/* Registro de compras históricas */}
+      <div className="bg-amber-50 dark:bg-amber-950/20 p-4 rounded-2xl border border-amber-200 dark:border-amber-900/60 space-y-3">
+        <div>
+          <h3 className="font-bold text-slate-900 dark:text-white">
+            Registrar compras iniciales como gastos
+          </h3>
+          <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+            Registra las compras originales de tus insumos sin modificar las
+            existencias actuales.
+          </p>
+          <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mt-1">
+            Insumos pendientes: {insumosPendientesCompraHistorica.length}
+          </p>
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Fecha de compra
+            </label>
+            <input
+              type="date"
+              value={fechaCompraHistorica}
+              onChange={(e) => setFechaCompraHistorica(e.target.value)}
+              required
+              className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+            />
+          </div>
+        
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Forma de pago
+            </label>
+            <select
+              value={formaPagoHistorica}
+              onChange={(e) =>
+                setFormaPagoHistorica(e.target.value as FormaPago)
+              }
+              className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+            >
+              <option value="efectivo">Efectivo</option>
+              <option value="tarjeta_debito">Tarjeta de débito</option>
+              <option value="tarjeta_credito">Tarjeta de crédito</option>
+              <option value="transferencia">Transferencia SPEI</option>
+            </select>
+          </div>
+        </div>
+            
+        <button
+          type="button"
+          onClick={handleRegistrarComprasHistoricas}
+          disabled={insumosPendientesCompraHistorica.length === 0}
+          className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold transition"
+        >
+          Registrar compras pendientes
+        </button>
+      </div>
+
 
       {/* Métricas del Catálogo */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

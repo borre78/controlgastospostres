@@ -128,15 +128,25 @@ export const calcularFactorPresentacion = (
   }
 
   if (tipoCalculo === 'volumen_ml') {
-    // cantidadOVolumen en ml
-    // Si la receta rinde en litros (ej. 2 L) o en ml (ej. 2000 ml)
+    // Convertir el rendimiento utilizable a mililitros.
     let volumenTotalRecetaMl = recetaRendimiento || 1000;
-    if (recetaUnidad === 'litros' || recetaUnidad === 'litro' || recetaUnidad === 'L') {
+
+    if (
+      recetaUnidad === 'litros' ||
+      recetaUnidad === 'litro' ||
+      recetaUnidad === 'L'
+    ) {
       volumenTotalRecetaMl = (recetaRendimiento || 1) * 1000;
     }
-    // Considerar volumen neto utilizable con merma
-    const volumenNetoUtilizable = volumenTotalRecetaMl * mermaFactor;
-    return volumenNetoUtilizable > 0 ? cantidadOVolumen / volumenNetoUtilizable : 0;
+
+    // Si se capturó un rendimiento utilizable explícito,
+    // ese valor ya representa la cantidad final vendible.
+    // No aplicar nuevamente la merma.
+    const volumenNetoUtilizable = volumenTotalRecetaMl;
+
+    return volumenNetoUtilizable > 0
+      ? cantidadOVolumen / volumenNetoUtilizable
+      : 0;
   }
 
   if (tipoCalculo === 'peso_g') {

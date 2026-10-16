@@ -33,6 +33,7 @@ export const InventoryView: React.FC = () => {
   const [recetaSeleccionadaId, setRecetaSeleccionadaId] = useState('');
   const [tandas, setTandas] = useState('1');
   const [sumarStockProdId, setSumarStockProdId] = useState('');
+  const [sumarStockPresId, setSumarStockPresId] = useState('');
   const [descontarInsumos, setDescontarInsumos] = useState(true);
   const [notasProduccion, setNotasProduccion] = useState('');
   const [mensajeResultado, setMensajeResultado] = useState<{
@@ -108,7 +109,10 @@ export const InventoryView: React.FC = () => {
     setNotasProduccion('');
     // Buscar si hay producto vinculado a esta receta
     const prodVinculado = productos.find((p) => p.recetaId === (primerReceta ? primerReceta.id : ''));
+    const primeraPresentacion = prodVinculado?.presentaciones?.[0];
+
     setSumarStockProdId(prodVinculado ? prodVinculado.id : '');
+    setSumarStockPresId(primeraPresentacion ? primeraPresentacion.id : '');
     setIsHornearModalOpen(true);
   };
 
@@ -129,6 +133,7 @@ export const InventoryView: React.FC = () => {
       tNum,
       descontarInsumos,
       sumarStockProdId || undefined,
+      sumarStockPresId || undefined,
       notasProduccion
     );
 
@@ -423,7 +428,9 @@ export const InventoryView: React.FC = () => {
                   const id = e.target.value;
                   setRecetaSeleccionadaId(id);
                   const prodVinculado = productos.find((p) => p.recetaId === id);
+                  const primeraPresentacion = prodVinculado?.presentaciones?.[0];
                   setSumarStockProdId(prodVinculado ? prodVinculado.id : '');
+                  setSumarStockPresId(primeraPresentacion ? primeraPresentacion.id : '');
                 }}
                 className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold"
               >
@@ -470,33 +477,52 @@ export const InventoryView: React.FC = () => {
           )}
 
           {/* Sumar a presentación comercial de producto terminado listo */}
+          
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
               Sumar estas unidades al stock de una presentación comercial (Opcional):
             </label>
+                  
             <select
-              value={sumarStockProdId ? `${sumarStockProdId}::${sumarStockProdId}` : ''}
+              value={
+                sumarStockProdId && sumarStockPresId
+                  ? `${sumarStockProdId}::${sumarStockPresId}`
+                  : ''
+              }
               onChange={(e) => {
                 const val = e.target.value;
+              
                 if (!val) {
                   setSumarStockProdId('');
+                  setSumarStockPresId('');
                   return;
                 }
+              
                 const [pId, presId] = val.split('::');
                 setSumarStockProdId(pId);
+                setSumarStockPresId(presId);
               }}
               className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
             >
-              <option value="">No sumar a presentación (solo registrar producción)</option>
-              {productos.map((p) =>
-                (p.presentaciones || []).map((pres) => (
-                  <option key={`${p.id}::${pres.id}`} value={`${p.id}::${pres.id}`}>
-                    {p.nombre} — {pres.nombre} (Stock actual: {pres.stockListo || 0})
-                  </option>
-                ))
-              )}
+              <option value="">
+                No sumar a presentación (solo registrar producción)
+              </option>
+            
+              {productos
+                .filter((p) => p.recetaId === recetaSeleccionadaId)
+                .flatMap((p) =>
+                  (p.presentaciones || []).map((pres) => (
+                    <option
+                      key={`${p.id}::${pres.id}`}
+                      value={`${p.id}::${pres.id}`}
+                    >
+                      {p.nombre} — {pres.nombre} (Stock actual: {pres.stockListo || 0})
+                    </option>
+                  ))
+                )}
             </select>
           </div>
+
 
           {/* Lista de Insumos que se consumirán */}
           {previewConsumos.length > 0 && (

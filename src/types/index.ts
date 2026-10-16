@@ -152,9 +152,11 @@ export interface ProductoVenta {
 
 export interface Venta {
   id: string;
+  pedidoId?: string; // Identificador compartido por los productos del mismo pedido
+  folioPedido?: string;
   fecha: string; // YYYY-MM-DD o ISO
   cliente?: string;
-  telefonoCliente?: string;
+  telefonoCliente?: string; 
   productoId: string;
   productoNombre: string;
   presentacionId?: string; // ID de la presentación vendida
@@ -172,6 +174,7 @@ export interface Venta {
   fechaCobro?: string;
   notas?: string;
   esDemostracion?: boolean;
+  descontoStock?: boolean;
 }
 
 export interface Gasto {

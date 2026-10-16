@@ -49,6 +49,15 @@ export const SalesView: React.FC = () => {
   const [cobroFormaPago, setCobroFormaPago] = useState<FormaPago>('efectivo');
 
   // Form State
+  type ProductoEnPedido = {
+  productoId: string;
+  presentacionId: string;
+  cantidad: string;
+  precioUnitario: string;
+  descuento: string;
+};
+
+  const [productosPedido, setProductosPedido] = useState<ProductoEnPedido[]>([]);
   const [fecha, setFecha] = useState(getFechaHoy);
   const [cliente, setCliente] = useState('');
   const [telefonoCliente, setTelefonoCliente] = useState('');
@@ -77,27 +86,66 @@ export const SalesView: React.FC = () => {
   }, [presentacionesDisponibles, presentacionId]);
 
   // Cálculos en vivo para modal de venta
+  
   const calculoEnVivo = useMemo(() => {
     const cant = parseFloat(cantidad) || 1;
     const pUnit =
-      parseFloat(precioUnitario) || (presentacionSeleccionada ? presentacionSeleccionada.precioVentaReal : 0);
+      parseFloat(precioUnitario) ||
+      (presentacionSeleccionada
+        ? presentacionSeleccionada.precioVentaReal
+        : 0);
     const desc = parseFloat(descuento) || 0;
 
     const subtotal = cant * pUnit;
-    const totalVenta = Math.max(0, subtotal - desc);
-    const costoUnit = presentacionSeleccionada ? presentacionSeleccionada.costoUnitarioTotal : 0;
-    const costoTotal = cant * costoUnit;
+    const totalVentaPrincipal = Math.max(0, subtotal - desc);
+    const costoUnit = presentacionSeleccionada
+      ? presentacionSeleccionada.costoUnitarioTotal
+      : 0;
+    const costoTotalPrincipal = cant * costoUnit;
+
+    // Calcular visualmente los productos adicionales
+    const totalAdicionales = productosPedido.reduce((total, item) => {
+      const cantidadItem = parseFloat(item.cantidad) || 0;
+      const precioItem = parseFloat(item.precioUnitario) || 0;
+      const descuentoItem = parseFloat(item.descuento) || 0;
+
+      return total + Math.max(
+        0,
+        cantidadItem * precioItem - descuentoItem
+      );
+    }, 0);
+
+    const costoAdicionales = productosPedido.reduce((total, item) => {
+      const cantidadItem = parseFloat(item.cantidad) || 0;
+      const productoItem = productos.find(
+        (p) => p.id === item.productoId
+      );
+      const presentacionItem = productoItem?.presentaciones?.find(
+        (p) => p.id === item.presentacionId
+      );
+
+      return total +
+        cantidadItem * (presentacionItem?.costoUnitarioTotal || 0);
+    }, 0);
+
+    const totalVenta = totalVentaPrincipal + totalAdicionales;
+    const costoTotal = costoTotalPrincipal + costoAdicionales;
     const utilidad = totalVenta - costoTotal;
 
     const stockDisponible = presentacionSeleccionada?.stockListo || 0;
-    const stockInsuficiente = stockDisponible > 0 && cant > stockDisponible;
+    const stockInsuficiente =
+      stockDisponible > 0 && cant > stockDisponible;
 
-    // Análisis de volumen de receta e insumos
-    const recetaBase = recetas.find((r) => r.id === productoSeleccionado?.recetaId);
+    // Análisis de volumen de receta e insumos del producto principal
+    const recetaBase = recetas.find(
+      (r) => r.id === productoSeleccionado?.recetaId
+    );
+
     let volumenRequerido = 0;
     let unidadRequerida = '';
     let tandasNecesarias = 0;
     let superaVolumenReceta = false;
+
     const ingredientesFaltantes: {
       nombre: string;
       requerido: number;
@@ -109,21 +157,26 @@ export const SalesView: React.FC = () => {
       const factor = presentacionSeleccionada.factorReceta || 1;
       tandasNecesarias = cant * factor;
 
-      volumenRequerido = cant * (presentacionSeleccionada.cantidadOVolumen || 1);
-      unidadRequerida =
-        presentacionSeleccionada.unidadMedida || recetaBase.rendimientoUnidad || 'unidades';
+      volumenRequerido =
+        cant * (presentacionSeleccionada.cantidadOVolumen || 1);
 
-      // Si la cantidad solicitada excede lo que rinde 1 sola tanda de la receta
+      unidadRequerida =
+        presentacionSeleccionada.unidadMedida ||
+        recetaBase.rendimientoUnidad ||
+        'unidades';
+
       if (tandasNecesarias > 1.001) {
         superaVolumenReceta = true;
       }
 
-      // Verificar si los insumos en almacén cubren esta cantidad requerida
       const insumoMap = new Map(insumos.map((i) => [i.id, i]));
+
       for (const ing of recetaBase.ingredientes) {
         const ins = insumoMap.get(ing.insumoId);
+
         if (ins) {
           const req = ing.cantidad * tandasNecesarias;
+
           if (ins.stockActual < req) {
             ingredientesFaltantes.push({
               nombre: ins.nombre,
@@ -158,7 +211,10 @@ export const SalesView: React.FC = () => {
     productoSeleccionado,
     recetas,
     insumos,
+    productos,
+    productosPedido,
   ]);
+
 
   const handleOpenNuevo = () => {
     setEditingVenta(null);
@@ -173,7 +229,8 @@ export const SalesView: React.FC = () => {
     const primerPres = primerProd?.presentaciones?.[0];
     setPresentacionId(primerPres ? primerPres.id : '');
     setPrecioUnitario(primerPres ? String(primerPres.precioVentaReal) : '');
-
+    
+    setProductosPedido([]);
     setCantidad('1');
     setDescuento('0');
     setEstadoCobro('cobrada');
@@ -181,6 +238,33 @@ export const SalesView: React.FC = () => {
     setNotas('');
     setDescontarStock(true);
     setIsModalOpen(true);
+  };
+
+  const agregarProductoAlPedido = () => {
+    const primerProducto = productos.find((p) => p.activo !== false) || productos[0];
+    const primeraPresentacion = primerProducto?.presentaciones?.[0];
+
+    if (!primerProducto || !primeraPresentacion) {
+      alert('No hay productos con presentaciones disponibles.');
+      return;
+    }
+
+    setProductosPedido((prev) => [
+      ...prev,
+      {
+        productoId: primerProducto.id,
+        presentacionId: primeraPresentacion.id,
+        cantidad: '1',
+        precioUnitario: String(primeraPresentacion.precioVentaReal),
+        descuento: '0',
+      },
+    ]);
+  };
+
+  const quitarProductoDelPedido = (indice: number) => {
+    setProductosPedido((prev) =>
+      prev.filter((_, i) => i !== indice)
+    );
   };
 
   const handleOpenEditar = (v: Venta) => {
@@ -200,31 +284,81 @@ export const SalesView: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
     const cant = parseFloat(cantidad);
     const pUnit = parseFloat(precioUnitario);
     const desc = parseFloat(descuento) || 0;
 
-    if (!productoId || isNaN(cant) || cant <= 0 || isNaN(pUnit) || pUnit <= 0) {
+    if (
+      !productoId ||
+      isNaN(cant) ||
+      cant <= 0 ||
+      isNaN(pUnit) ||
+      pUnit <= 0 ||
+      desc < 0
+    ) {
       alert('Selecciona un producto y especifica cantidad y precio válidos.');
       return;
     }
 
+    // Validar los productos adicionales antes de guardar
+    if (!editingVenta) {
+      for (let i = 0; i < productosPedido.length; i++) {
+        const item = productosPedido[i];
+        const cantidadItem = parseFloat(item.cantidad);
+        const precioItem = parseFloat(item.precioUnitario);
+        const descuentoItem = parseFloat(item.descuento) || 0;
+        const productoItem = productoMap.get(item.productoId);
+        const presentacionItem = productoItem?.presentaciones?.find(
+          (p) => p.id === item.presentacionId
+        );
+
+        if (
+          !productoItem ||
+          !presentacionItem ||
+          isNaN(cantidadItem) ||
+          cantidadItem <= 0 ||
+          isNaN(precioItem) ||
+          precioItem <= 0 ||
+          descuentoItem < 0
+        ) {
+          alert(
+            `Revisa el producto adicional ${i + 1}: selecciona una presentación e indica cantidad y precio válidos.`
+          );
+          return;
+        }
+      }
+    }
+
     const prod = productoMap.get(productoId);
     const prodNombre = prod ? prod.nombre : 'Postre';
-    const presNombre = presentacionSeleccionada ? presentacionSeleccionada.nombre : undefined;
+    const presNombre = presentacionSeleccionada
+      ? presentacionSeleccionada.nombre
+      : undefined;
 
     const totalVenta = Math.max(0, cant * pUnit - desc);
-    const costoUnit = presentacionSeleccionada ? presentacionSeleccionada.costoUnitarioTotal : 0;
+    const costoUnit = presentacionSeleccionada
+      ? presentacionSeleccionada.costoUnitarioTotal
+      : 0;
     const costoTotalVendido = cant * costoUnit;
     const utilidadEstimada = totalVenta - costoTotalVendido;
 
+    const datosCompartidos = {
+      fecha,
+      cliente: cliente.trim() || undefined,
+      telefonoCliente: telefonoCliente.trim() || undefined,
+      estadoCobro,
+      formaPago: estadoCobro === 'cobrada' ? formaPago : undefined,
+      fechaCobro: estadoCobro === 'cobrada' ? fecha : undefined,
+      notas: notas.trim() || undefined,
+    };
+
     if (editingVenta) {
       updateVenta(editingVenta.id, {
-        fecha,
-        cliente: cliente.trim() || undefined,
-        telefonoCliente: telefonoCliente.trim() || undefined,
+        ...datosCompartidos,
         productoId,
         productoNombre: prodNombre,
         presentacionId: presentacionId || undefined,
@@ -235,17 +369,17 @@ export const SalesView: React.FC = () => {
         totalVenta,
         costoTotalVendido,
         utilidadEstimada,
-        estadoCobro,
-        formaPago: estadoCobro === 'cobrada' ? formaPago : undefined,
-        fechaCobro: estadoCobro === 'cobrada' ? fecha : undefined,
-        notas: notas.trim() || undefined,
       });
     } else {
+      const pedidoId = `pedido-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const folioPedido = `PED-${Date.now().toString().slice(-8)}`;
+      console.log('Folio generado:', folioPedido);
+      // Guardar el producto principal
       addVenta(
         {
-          fecha,
-          cliente: cliente.trim() || undefined,
-          telefonoCliente: telefonoCliente.trim() || undefined,
+          ...datosCompartidos,
+          pedidoId,
+          folioPedido,
           productoId,
           productoNombre: prodNombre,
           presentacionId: presentacionId || undefined,
@@ -256,17 +390,55 @@ export const SalesView: React.FC = () => {
           totalVenta,
           costoTotalVendido,
           utilidadEstimada,
-          estadoCobro,
-          formaPago: estadoCobro === 'cobrada' ? formaPago : undefined,
-          fechaCobro: estadoCobro === 'cobrada' ? fecha : undefined,
-          notas: notas.trim() || undefined,
         },
         descontarStock
       );
+
+      // Guardar cada producto adicional como otra venta
+      productosPedido.forEach((item) => {
+        const productoItem = productoMap.get(item.productoId);
+        const presentacionItem = productoItem?.presentaciones?.find(
+          (p) => p.id === item.presentacionId
+        );
+
+        // Los datos ya fueron validados arriba
+        if (!productoItem || !presentacionItem) return;
+
+        const cantidadItem = parseFloat(item.cantidad);
+        const precioItem = parseFloat(item.precioUnitario);
+        const descuentoItem = parseFloat(item.descuento) || 0;
+        const totalItem = Math.max(
+          0,
+          cantidadItem * precioItem - descuentoItem
+        );
+        const costoItem =
+          cantidadItem * presentacionItem.costoUnitarioTotal;
+
+        addVenta(
+          {
+            ...datosCompartidos,
+            pedidoId,
+            folioPedido,
+            productoId: productoItem.id,
+            productoNombre: productoItem.nombre,
+            presentacionId: presentacionItem.id,
+            presentacionNombre: presentacionItem.nombre,
+            cantidad: cantidadItem,
+            precioUnitario: precioItem,
+            descuento: descuentoItem,
+            totalVenta: totalItem,
+            costoTotalVendido: costoItem,
+            utilidadEstimada: totalItem - costoItem,
+          },
+          descontarStock
+        );
+      });
     }
 
+    setProductosPedido([]);
     setIsModalOpen(false);
   };
+
 
   // Filtrado reactivo
   const ventasFiltradas = useMemo(() => {
@@ -292,6 +464,47 @@ export const SalesView: React.FC = () => {
       return true;
     });
   }, [ventas, busqueda, filtroEstado, filtroProducto]);
+
+  // Calcular totales de pedidos con varios productos
+  const obtenerTotalPedido = (venta: Venta) => {
+    if (!venta.pedidoId) {
+      return venta.totalVenta;
+    }
+
+    return ventas
+      .filter((v) => v.pedidoId === venta.pedidoId)
+      .reduce((total, v) => total + v.totalVenta, 0);
+  };
+
+  const obtenerCantidadProductosPedido = (venta: Venta) => {
+    if (!venta.pedidoId) {
+      return 1;
+    }
+
+    return ventas.filter((v) => v.pedidoId === venta.pedidoId).length;
+  };
+
+  // Agrupar las ventas por pedido para mostrarlas organizadas
+  const pedidosAgrupados = useMemo(() => {
+    const grupos = new Map<string, Venta[]>();
+
+    ventasFiltradas.forEach((venta) => {
+      const clave = venta.pedidoId || `venta-individual-${venta.id}`;
+      const grupo = grupos.get(clave) || [];
+
+      grupo.push(venta);
+      grupos.set(clave, grupo);
+    });
+
+    return Array.from(grupos.entries()).map(([pedidoId, productos]) => ({
+      pedidoId,
+      productos,
+      total: productos.reduce((sum, producto) => sum + producto.totalVenta, 0),
+      cantidadProductos: productos.length,
+      fecha: productos[0].fecha,
+      cliente: productos[0].cliente,
+    }));
+  }, [ventasFiltradas]);
 
   // Totales
   const totalCobrado = ventasFiltradas
@@ -439,107 +652,133 @@ export const SalesView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                ventasFiltradas.map((v) => (
-                  <tr
-                    key={v.id}
-                    className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition"
-                  >
-                    <td className="py-3 px-4 whitespace-nowrap font-medium text-slate-600 dark:text-slate-300">
-                      {formatFecha(v.fecha, true)}
-                    </td>
+                  pedidosAgrupados.flatMap((pedido) =>
+                    pedido.productos.map((v, indiceProducto) => (
+                      <React.Fragment key={v.id}>
+                        {indiceProducto === 0 && (
+                          <tr className="bg-blue-50 dark:bg-blue-950/30 border-t-2 border-blue-200 dark:border-blue-900">
+                            <td colSpan={8} className="px-4 py-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                  <div className="font-bold text-blue-900 dark:text-blue-200">
+                                    Pedido {pedido.productos[0].folioPedido || 'Sin folio'} —{' '}
+                                           {pedido.cliente || 'Venta de mostrador'}
+                                  </div>
+                                  <div className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
+                                    {pedido.cantidadProductos} productos · {formatFecha(pedido.fecha, true)}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-xs text-blue-700 dark:text-blue-300">
+                                    Total del pedido
+                                  </div>
+                                  <div className="text-lg font-black text-blue-900 dark:text-blue-100">
+                                    {formatMXN(pedido.total)}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        <tr className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
+                      <td className="py-3 px-4 whitespace-nowrap font-medium text-slate-600 dark:text-slate-300">
+                        {formatFecha(v.fecha, true)}
+                      </td>
 
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-slate-900 dark:text-white">
-                        {v.cantidad}x {v.productoNombre}
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                        {v.presentacionNombre && (
-                          <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-900/40">
-                            {v.presentacionNombre}
+                      <td className="py-3 px-4">
+                        <div className="font-bold text-slate-900 dark:text-white">
+                          {v.cantidad}x {v.productoNombre}
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                          {v.presentacionNombre && (
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-900/40">
+                              {v.presentacionNombre}
+                            </span>
+                          )}
+                          {v.esDemostracion ? (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300">
+                              Ejemplo Demo
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300">
+                              Dato Real
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[11px] text-slate-400 block mt-0.5">
+                          {formatMXN(v.precioUnitario)} c/u
+                          {v.descuento > 0 && ` (Desc: -${formatMXN(v.descuento)})`}
+                        </span>
+                      </td>
+
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-slate-800 dark:text-slate-200">
+                          {v.cliente || 'Venta de mostrador'}
+                        </div>
+                        {v.telefonoCliente && (
+                          <span className="text-[11px] text-slate-400 block">
+                            Tel: {v.telefonoCliente}
                           </span>
                         )}
-                        {v.esDemostracion ? (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300">
-                            Ejemplo Demo
+                        {v.notas && (
+                          <p className="text-[11px] text-slate-400 line-clamp-1 italic mt-0.5">
+                            {v.notas}
+                          </p>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-4 whitespace-nowrap text-right font-black text-slate-900 dark:text-white text-sm">
+                        {formatMXN(v.totalVenta)}
+                      </td>
+
+                      <td className="py-3 px-4 whitespace-nowrap text-right font-medium text-slate-500 dark:text-slate-400">
+                        {formatMXN(v.costoTotalVendido)}
+                      </td>
+
+                      <td className="py-3 px-4 whitespace-nowrap text-right font-extrabold text-emerald-600 dark:text-emerald-400">
+                        +{formatMXN(v.utilidadEstimada)}
+                      </td>
+
+                      <td className="py-3 px-4 whitespace-nowrap text-center">
+                        {v.estadoCobro === 'cobrada' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+                            <CheckCircle className="w-3 h-3" />
+                            Cobrada
                           </span>
                         ) : (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300">
-                            Dato Real
-                          </span>
+                          <button
+                            onClick={() => setVentaACobrar(v)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 hover:bg-emerald-100 hover:text-emerald-800 transition active:scale-95"
+                            title="Haz clic para marcar como cobrada"
+                          >
+                            <Clock className="w-3 h-3" />
+                            Pendiente (Cobrar)
+                          </button>
                         )}
-                      </div>
-                      <span className="text-[11px] text-slate-400 block mt-0.5">
-                        {formatMXN(v.precioUnitario)} c/u
-                        {v.descuento > 0 && ` (Desc: -${formatMXN(v.descuento)})`}
-                      </span>
-                    </td>
+                      </td>
 
-                    <td className="py-3 px-4">
-                      <div className="font-semibold text-slate-800 dark:text-slate-200">
-                        {v.cliente || 'Venta de mostrador'}
-                      </div>
-                      {v.telefonoCliente && (
-                        <span className="text-[11px] text-slate-400 block">
-                          Tel: {v.telefonoCliente}
-                        </span>
-                      )}
-                      {v.notas && (
-                        <p className="text-[11px] text-slate-400 line-clamp-1 italic mt-0.5">
-                          {v.notas}
-                        </p>
-                      )}
-                    </td>
-
-                    <td className="py-3 px-4 whitespace-nowrap text-right font-black text-slate-900 dark:text-white text-sm">
-                      {formatMXN(v.totalVenta)}
-                    </td>
-
-                    <td className="py-3 px-4 whitespace-nowrap text-right font-medium text-slate-500 dark:text-slate-400">
-                      {formatMXN(v.costoTotalVendido)}
-                    </td>
-
-                    <td className="py-3 px-4 whitespace-nowrap text-right font-extrabold text-emerald-600 dark:text-emerald-400">
-                      +{formatMXN(v.utilidadEstimada)}
-                    </td>
-
-                    <td className="py-3 px-4 whitespace-nowrap text-center">
-                      {v.estadoCobro === 'cobrada' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
-                          <CheckCircle className="w-3 h-3" />
-                          Cobrada
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => setVentaACobrar(v)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 hover:bg-emerald-100 hover:text-emerald-800 transition active:scale-95"
-                          title="Haz clic para marcar como cobrada"
-                        >
-                          <Clock className="w-3 h-3" />
-                          Pendiente (Cobrar)
-                        </button>
-                      )}
-                    </td>
-
-                    <td className="py-3 px-4 whitespace-nowrap text-center">
-                      <div className="inline-flex items-center gap-1">
-                        <button
-                          onClick={() => handleOpenEditar(v)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                          title="Editar venta"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setVentaAEliminar(v)}
-                          className="p-1.5 rounded-lg text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
-                          title="Eliminar venta"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      <td className="py-3 px-4 whitespace-nowrap text-center">
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            onClick={() => handleOpenEditar(v)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                            title="Editar venta"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setVentaAEliminar(v)}
+                            className="p-1.5 rounded-lg text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                            title="Eliminar venta"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    </React.Fragment>
+                  ))
+                )
               )}
             </tbody>
           </table>
@@ -633,6 +872,198 @@ export const SalesView: React.FC = () => {
               </div>
             </div>
           )}
+
+          {!editingVenta && (
+            <button
+              type="button"
+              onClick={agregarProductoAlPedido}
+              className="w-full py-2.5 rounded-xl border border-dashed border-emerald-400 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-xs font-bold transition"
+            >
+              + Agregar otro producto al pedido
+            </button>
+          )}
+
+          
+          {productosPedido.map((item, indice) => {
+            const producto = productos.find((p) => p.id === item.productoId);
+            const presentacion = producto?.presentaciones?.find(
+              (p) => p.id === item.presentacionId
+            );
+          
+            return (
+              <div
+                key={`${indice}-${item.productoId}`}
+                className="rounded-xl border border-emerald-200 dark:border-emerald-900 p-3 space-y-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                    Producto adicional {indice + 1}
+                  </span>
+            
+                  <button
+                    type="button"
+                    onClick={() => quitarProductoDelPedido(indice)}
+                    className="text-xs text-red-500 hover:text-red-700 font-semibold"
+                  >
+                    Quitar
+                  </button>
+                </div>
+            
+                <div>
+                  <label className="block text-xs font-semibold mb-1">
+                    Producto
+                  </label>
+                  <select
+                    value={item.productoId}
+                    onChange={(e) => {
+                      const nuevoProducto = productos.find(
+                        (p) => p.id === e.target.value
+                      );
+                      const nuevaPresentacion = nuevoProducto?.presentaciones?.[0];
+                    
+                      setProductosPedido((prev) =>
+                        prev.map((fila, i) =>
+                          i === indice
+                            ? {
+                                ...fila,
+                                productoId: e.target.value,
+                                presentacionId: nuevaPresentacion?.id ?? '',
+                                precioUnitario: nuevaPresentacion
+                                  ? String(nuevaPresentacion.precioVentaReal)
+                                  : '',
+                              }
+                            : fila
+                        )
+                      );
+                    }}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 p-2 text-sm"
+                  >
+                    {productos
+                      .filter((p) => p.activo !== false)
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.nombre}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                    
+                <div>
+                  <label className="block text-xs font-semibold mb-1">
+                    Presentación
+                  </label>
+                  <select
+                    value={item.presentacionId}
+                    onChange={(e) => {
+                      const nuevaPresentacion = producto?.presentaciones?.find(
+                        (p) => p.id === e.target.value
+                      );
+                    
+                      setProductosPedido((prev) =>
+                        prev.map((fila, i) =>
+                          i === indice
+                            ? {
+                                ...fila,
+                                presentacionId: e.target.value,
+                                precioUnitario: nuevaPresentacion
+                                  ? String(nuevaPresentacion.precioVentaReal)
+                                  : '',
+                              }
+                            : fila
+                        )
+                      );
+                    }}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 p-2 text-sm"
+                  >
+                    {producto?.presentaciones?.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                  
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">
+                      Cantidad
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={item.cantidad}
+                      onChange={(e) =>
+                        setProductosPedido((prev) =>
+                          prev.map((fila, i) =>
+                            i === indice
+                              ? { ...fila, cantidad: e.target.value }
+                              : fila
+                          )
+                        )
+                      }
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 p-2 text-sm"
+                    />
+                  </div>
+                    
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">
+                      Precio unitario
+                    </label>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={item.precioUnitario}
+                      onChange={(e) =>
+                        setProductosPedido((prev) =>
+                          prev.map((fila, i) =>
+                            i === indice
+                              ? { ...fila, precioUnitario: e.target.value }
+                              : fila
+                          )
+                        )
+                      }
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 p-2 text-sm"
+                    />
+                  </div>
+                    
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">
+                      Descuento ($)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.descuento}
+                      onChange={(e) =>
+                        setProductosPedido((prev) =>
+                          prev.map((fila, i) =>
+                            i === indice
+                              ? { ...fila, descuento: e.target.value }
+                              : fila
+                          )
+                        )
+                      }
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 p-2 text-sm"
+                    />
+                  </div>
+                </div>
+                    
+                <div className="text-right text-sm font-bold text-gray-700 dark:text-gray-200">
+                  Subtotal: $
+                  {Math.max(
+                    0,
+                    (parseFloat(item.cantidad) || 0) *
+                      (parseFloat(item.precioUnitario) || 0) -
+                      (parseFloat(item.descuento) || 0)
+                  ).toFixed(2)}
+                </div>
+              </div>
+            );
+          })}
+
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>

@@ -106,8 +106,8 @@ export const ProductsView: React.FC = () => {
     const cantVol = parseFloat(presCantidadOVolumen) || 1;
     const rebanadasTot = parseFloat(presRebanadasTotales) || 8;
     const recetaCostoTotal = recetaDelProducto ? recetaDelProducto.costoTotalReceta : 0;
-    const recetaRendimiento = recetaDelProducto ? recetaDelProducto.rendimientoCantidad : 1;
-    const recetaUnidad = recetaDelProducto ? recetaDelProducto.rendimientoUnidad : 'unidades';
+    const recetaRendimiento = recetaDelProducto?.volumenOUnidadesUtilizables ?? recetaDelProducto?.rendimientoCantidad ?? 1;
+    const recetaUnidad = recetaDelProducto?.unidadMedidaBase ?? recetaDelProducto?.rendimientoUnidad ?? 'unidades';
     const mermaPct = recetaDelProducto?.mermaEstimadaPct || 0;
 
     // Calcular factor matemático

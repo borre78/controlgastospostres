@@ -95,6 +95,11 @@ interface AppContextType {
 
   // Gastos
   addGasto: (gasto: Omit<Gasto, 'id'>) => void;
+  registrarCompraHistoricaInsumo: (
+    insumo: Insumo,
+    fechaCompra: string,
+    formaPago: Gasto['formaPago']
+  ) => void;
   updateGasto: (id: string, gasto: Partial<Gasto>) => void;
   deleteGasto: (id: string) => void;
 
@@ -192,7 +197,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setInsumos(insumosNube as unknown as Insumo[]);
         setRecetas(recetasNube as unknown as Receta[]);
         setProductos(productosNube as unknown as ProductoVenta[]);
-        setVentas(ventasNube as unknown as Venta[]);
+        const ventasCargadas = ventasNube as unknown as Venta[];
+
+const pedidosConFolio = new Map<string, string>();
+let siguienteFolio = 1;
+
+const ventasActualizadas = ventasCargadas.map((venta) => {
+  // Si ya tiene folio, lo conservamos.
+  if (venta.folioPedido) {
+    if (venta.pedidoId) {
+      pedidosConFolio.set(venta.pedidoId, venta.folioPedido);
+    }
+    return venta;
+  }
+
+  // Las ventas del mismo pedido compartirán el mismo folio.
+  if (venta.pedidoId) {
+    let folio = pedidosConFolio.get(venta.pedidoId);
+
+    if (!folio) {
+      folio = `PED-${String(siguienteFolio++).padStart(6, '0')}`;
+      pedidosConFolio.set(venta.pedidoId, folio);
+    }
+
+    return { ...venta, folioPedido: folio };
+  }
+
+  // Para ventas antiguas sin pedidoId, asignamos un folio individual.
+  return {
+    ...venta,
+    folioPedido: `PED-${String(siguienteFolio++).padStart(6, '0')}`,
+  };
+});
+setVentas(ventasActualizadas);
         setGastos(gastosNube as unknown as Gasto[]);
         setCategorias(categoriasNube as unknown as CategoriaGasto[]);
         setProducciones(produccionesNube as unknown as RegistroProduccion[]);
@@ -710,6 +747,7 @@ const updatePresentacion = (
     const nueva: Venta = {
       ...ventaData,
       id,
+      descontoStock: descontarStock,
     };
 
     setVentas((prev) => [nueva, ...prev]);
@@ -758,9 +796,81 @@ const updatePresentacion = (
     setVentas((prev) => prev.map((v) => (v.id === id ? { ...v, ...cambios } : v)));
   };
 
+  
+  
   const deleteVenta = (id: string) => {
+    const ventaAEliminar = ventas.find((v) => v.id === id);
+  
+    if (!ventaAEliminar) return;
+  
+    // Eliminar la venta del historial.
     setVentas((prev) => prev.filter((v) => v.id !== id));
+  
+    // Solo restaurar inventario si esta venta lo descontó.
+    if (ventaAEliminar.descontoStock !== true) return;
+  
+    if (ventaAEliminar.productoId) {
+      // Restaurar el stock del producto terminado.
+      setProductos((prev) =>
+        prev.map((producto) => {
+          if (producto.id !== ventaAEliminar.productoId) return producto;
+        
+          const presentacionesActualizadas = (
+            producto.presentaciones || []
+          ).map((presentacion) => {
+            if (
+              ventaAEliminar.presentacionId &&
+              presentacion.id === ventaAEliminar.presentacionId
+            ) {
+              return {
+                ...presentacion,
+                stockListo:
+                  (presentacion.stockListo || 0) + ventaAEliminar.cantidad,
+              };
+            }
+          
+            return presentacion;
+          });
+        
+          return {
+            ...producto,
+            presentaciones: presentacionesActualizadas,
+          };
+        })
+      );
+    
+      // Restaurar los empaques descontados.
+      const producto = productos.find(
+        (p) => p.id === ventaAEliminar.productoId
+      );
+    
+      const presentacion = producto?.presentaciones?.find(
+        (p) => p.id === ventaAEliminar.presentacionId
+      );
+    
+      if (presentacion?.empaques?.length) {
+        setInsumos((prev) =>
+          prev.map((insumo) => {
+            const empaqueUsado = presentacion.empaques!.find(
+              (empaque) => empaque.insumoId === insumo.id
+            );
+          
+            if (!empaqueUsado) return insumo;
+          
+            return {
+              ...insumo,
+              stockActual:
+                insumo.stockActual +
+                empaqueUsado.cantidad * ventaAEliminar.cantidad,
+              fechaActualizacion: new Date().toISOString().split('T')[0],
+            };
+          })
+        );
+      }
+    }
   };
+
+
 
   const marcarVentaCobrada = (id: string, formaPago: Gasto['formaPago'] = 'efectivo') => {
     setVentas((prev) =>
@@ -786,6 +896,33 @@ const updatePresentacion = (
       id,
     };
     setGastos((prev) => [nuevo, ...prev]);
+  };
+
+  const registrarCompraHistoricaInsumo = (
+  insumo: Insumo,
+  fechaCompra: string,
+  formaPago: Gasto['formaPago']
+  ) => {
+    addGasto({
+      fecha: fechaCompra,
+      descripcion: `Compra inicial de insumo: ${insumo.nombre} (${insumo.cantidadCompra} ${insumo.unidadCompra})`,
+      categoriaId:
+        insumo.tipo === 'empaque'
+          ? 'cat-empaques'
+          : 'cat-ingredientes',
+      categoriaNombre:
+        insumo.tipo === 'empaque'
+          ? 'Empaques, Cajas y Desechables'
+          : 'Ingredientes y Materia Prima',
+      importe: insumo.precioCompra,
+      formaPago,
+      ambito: 'negocio',
+      tipoGastoNegocio: 'inventario_materia_prima',
+      insumoIdRelacionado: insumo.id,
+      notas: `Registro histórico de compra inicial. Proveedor: ${
+        insumo.proveedor || 'N/A'
+      }. No modifica las existencias.`,
+    });
   };
 
   const updateGasto = (id: string, cambios: Partial<Gasto>) => {
@@ -1184,6 +1321,7 @@ const migrarDatosLocalesAFirebase = async (): Promise<{
         deleteVenta,
         marcarVentaCobrada,
         addGasto,
+        registrarCompraHistoricaInsumo,
         updateGasto,
         deleteGasto,
         addCategoria,

@@ -51,6 +51,8 @@ export const RecipesView: React.FC = () => {
   const [rendimientoCantidad, setRendimientoCantidad] = useState('8');
   const [rendimientoUnidad, setRendimientoUnidad] = useState('rebanadas');
   const [mermaEstimada, setMermaEstimada] = useState('0');
+  const [volumenUtilizable, setVolumenUtilizable] = useState('');
+  const [unidadMedidaBase, setUnidadMedidaBase] = useState<'unidades' | 'ml' | 'litros' | 'g' | 'kg'>('unidades');
   const [tiempoElaboracion, setTiempoElaboracion] = useState('60');
 
   // Ingredientes en la receta
@@ -208,6 +210,8 @@ const insumosOtros = useMemo(() => {
     setDescripcion('');
     setRendimientoCantidad('8');
     setRendimientoUnidad('rebanadas');
+    setVolumenUtilizable('');
+    setUnidadMedidaBase('unidades');
     setTiempoElaboracion('60');
     setIngredientes([]);
     setEmpaques([]);
@@ -229,6 +233,12 @@ const insumosOtros = useMemo(() => {
     setDescripcion(rec.descripcion || '');
     setRendimientoCantidad(String(rec.rendimientoCantidad));
     setRendimientoUnidad(rec.rendimientoUnidad);
+    setVolumenUtilizable(
+      rec.volumenOUnidadesUtilizables != null
+        ? String(rec.volumenOUnidadesUtilizables)
+        : ''
+    );
+setUnidadMedidaBase(rec.unidadMedidaBase || 'unidades');
     setTiempoElaboracion(String(rec.tiempoElaboracionMinutos));
     setIngredientes(rec.ingredientes.map((i) => ({ insumoId: i.insumoId, cantidad: i.cantidad })));
     setEmpaques((rec.empaques || []).map((e) => ({ insumoId: e.insumoId, cantidad: e.cantidad })));
@@ -324,6 +334,10 @@ const handleAddOtroInsumoFila = () => {
         descripcion: descripcion.trim() || undefined,
         rendimientoCantidad: rendCant,
         rendimientoUnidad: rendimientoUnidad.trim(),
+        volumenOUnidadesUtilizables: volumenUtilizable
+          ? Number(volumenUtilizable)
+          : undefined,
+        unidadMedidaBase,
         tiempoElaboracionMinutos: parseFloat(tiempoElaboracion) || 0,
         ingredientes: calculosEnVivo.listaIngCalculados,
         empaques: calculosEnVivo.listaEmpCalculados,
@@ -344,6 +358,10 @@ const handleAddOtroInsumoFila = () => {
         descripcion: descripcion.trim() || undefined,
         rendimientoCantidad: rendCant,
         rendimientoUnidad: rendimientoUnidad.trim(),
+        volumenOUnidadesUtilizables: volumenUtilizable
+          ? Number(volumenUtilizable)
+          : undefined,
+        unidadMedidaBase,
         tiempoElaboracionMinutos: parseFloat(tiempoElaboracion) || 0,
         ingredientes: calculosEnVivo.listaIngCalculados,
         empaques: calculosEnVivo.listaEmpCalculados,
@@ -590,7 +608,58 @@ const handleAddOtroInsumoFila = () => {
                 onChange={(e) => setRendimientoUnidad(e.target.value)}
                 className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
               />
+            </div>            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Volumen o peso utilizable de la receta
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={volumenUtilizable}
+                  onChange={(e) => setVolumenUtilizable(e.target.value)}
+                  placeholder="Ej. 6.5"
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Cantidad final que realmente puedes vender después de preparar la receta.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Unidad de medida base
+                </label>
+                <select
+                  value={unidadMedidaBase}
+                  onChange={(e) =>
+                    setUnidadMedidaBase(
+                      e.target.value as
+                        | 'unidades'
+                        | 'ml'
+                        | 'litros'
+                        | 'g'
+                        | 'kg'
+                    )
+                  }
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2"
+                >
+                  <option value="unidades">Unidades</option>
+                  <option value="ml">Mililitros (ml)</option>
+                  <option value="litros">Litros (L)</option>
+                  <option value="g">Gramos (g)</option>
+                  <option value="kg">Kilogramos (kg)</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Selecciona la unidad en la que capturaste la cantidad anterior.
+                </p>
+              </div>
             </div>
+
+
+
           </div>
 
           {/* SECCIÓN 1: INGREDIENTES */}
