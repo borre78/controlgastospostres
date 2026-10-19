@@ -24,6 +24,7 @@ export interface Insumo {
   notas?: string;
   fechaActualizacion: string;
   esDemostracion?: boolean;
+  stockRequerido?: number; /** Cantidad que se desea tener disponible en cada revisión */
 }
 
 export interface IngredienteReceta {
@@ -225,6 +226,10 @@ export interface ConfiguracionApp {
   costoHoraManoObraDefault: number; // MXN por hora de repostero (ej. 65)
   tema: 'light' | 'dark' | 'system';
   modoPersistencia: 'local' | 'cloud_ready';
+  // Revisión de inventario
+  frecuenciaRevisionStock?: 'semanal' | 'quincenal' | 'mensual' | 'personalizada';
+  diasRevisionStock?: number;
+  fechaUltimaRevisionStock?: string;
 }
 
 export type PeriodoFiltro = 'hoy' | 'semana' | 'mes' | 'anio' | 'todo' | 'personalizado';

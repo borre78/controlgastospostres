@@ -29,7 +29,14 @@ export const ExpensesView: React.FC = () => {
   const [filtroAmbito, setFiltroAmbito] = useState<TipoAmbito | 'todos'>('todos');
   const [filtroCategoria, setFiltroCategoria] = useState<string>('todas');
   const [filtroFormaPago, setFiltroFormaPago] = useState<string>('todas');
-  const [filtroMes, setFiltroMes] = useState<string>('');
+  
+
+  const [filtroPeriodo, setFiltroPeriodo] = useState<
+    'todos' | 'hoy' | 'semana' | 'mes' | 'anio' | 'personalizado'
+  >('todos');
+
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
 
   // Modal Crear / Editar
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -123,8 +130,24 @@ export const ExpensesView: React.FC = () => {
     setIsModalOpen(false);
   };
 
-  // Filtrado reactivo de gastos
+   // Filtrado reactivo de gastos
   const gastosFiltrados = useMemo(() => {
+    const hoy = getFechaHoy();
+    const fechaHoy = new Date(`${hoy}T12:00:00`);
+
+    const inicioSemana = new Date(fechaHoy);
+    const diaSemana = (inicioSemana.getDay() + 6) % 7;
+    inicioSemana.setDate(inicioSemana.getDate() - diaSemana);
+
+    const fechaInicioSemana = [
+      inicioSemana.getFullYear(),
+      String(inicioSemana.getMonth() + 1).padStart(2, '0'),
+      String(inicioSemana.getDate()).padStart(2, '0'),
+    ].join('-');
+
+    const inicioMes = `${hoy.slice(0, 7)}-01`;
+    const inicioAnio = `${hoy.slice(0, 4)}-01-01`;
+
     return gastos.filter((g) => {
       // Búsqueda
       if (busqueda.trim()) {
@@ -133,6 +156,7 @@ export const ExpensesView: React.FC = () => {
           g.descripcion.toLowerCase().includes(query) ||
           g.categoriaNombre.toLowerCase().includes(query) ||
           (g.notas && g.notas.toLowerCase().includes(query));
+
         if (!coincide) return false;
       }
 
@@ -151,14 +175,42 @@ export const ExpensesView: React.FC = () => {
         return false;
       }
 
-      // Mes (YYYY-MM)
-      if (filtroMes && !g.fecha.startsWith(filtroMes)) {
-        return false;
+      // Periodo de fechas
+      switch (filtroPeriodo) {
+        case 'hoy':
+          if (g.fecha !== hoy) return false;
+          break;
+
+        case 'semana':
+          if (g.fecha < fechaInicioSemana || g.fecha > hoy) return false;
+          break;
+
+        case 'mes':
+          if (g.fecha < inicioMes || g.fecha > hoy) return false;
+          break;
+
+        case 'anio':
+          if (g.fecha < inicioAnio || g.fecha > hoy) return false;
+          break;
+
+        case 'personalizado':
+          if (fechaInicio && g.fecha < fechaInicio) return false;
+          if (fechaFin && g.fecha > fechaFin) return false;
+          break;
       }
 
       return true;
     });
-  }, [gastos, busqueda, filtroAmbito, filtroCategoria, filtroFormaPago, filtroMes]);
+  }, [
+    gastos,
+    busqueda,
+    filtroAmbito,
+    filtroCategoria,
+    filtroFormaPago,
+    filtroPeriodo,
+    fechaInicio,
+    fechaFin,
+  ]);
 
   // Totales de la lista filtrada
   const totalFiltrado = gastosFiltrados.reduce((sum, g) => sum + g.importe, 0);
@@ -301,6 +353,57 @@ export const ExpensesView: React.FC = () => {
             </select>
           </div>
         </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+              Periodo de gastos
+            </label>
+            <select
+              value={filtroPeriodo}
+              onChange={(e) => setFiltroPeriodo(e.target.value as typeof filtroPeriodo)}
+              className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+            >
+              <option value="todos">Todos los periodos</option>
+              <option value="hoy">Hoy</option>
+              <option value="semana">Esta semana</option>
+              <option value="mes">Este mes</option>
+              <option value="anio">Este año</option>
+              <option value="personalizado">Periodo personalizado</option>
+            </select>
+          </div>
+                  
+          {filtroPeriodo === 'personalizado' && (
+            <>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                  Desde
+                </label>
+                <input
+                  type="date"
+                  value={fechaInicio}
+                  max={fechaFin || undefined}
+                  onChange={(e) => setFechaInicio(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                />
+              </div>
+          
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                  Hasta
+                </label>
+                <input
+                  type="date"
+                  value={fechaFin}
+                  min={fechaInicio || undefined}
+                  onChange={(e) => setFechaFin(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                />
+              </div>
+            </>
+          )}
+        </div>
+
       </div>
 
       {/* Tabla de Registros de Gastos */}

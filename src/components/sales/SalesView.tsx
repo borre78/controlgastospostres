@@ -39,6 +39,8 @@ export const SalesView: React.FC = () => {
   const [filtroEstado, setFiltroEstado] = useState<'todas' | 'cobrada' | 'pendiente'>('todas');
   const [filtroProducto, setFiltroProducto] = useState<string>('todos');
 
+  const [filtroFormaPago, setFiltroFormaPago] = useState<'todas' | FormaPago>('todas');
+
   // Modal Crear / Editar
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVenta, setEditingVenta] = useState<Venta | null>(null);
@@ -461,9 +463,16 @@ export const SalesView: React.FC = () => {
         return false;
       }
 
+      if (
+        filtroFormaPago !== 'todas' &&
+        v.formaPago !== filtroFormaPago
+      ) {
+        return false;
+      }
+
       return true;
     });
-  }, [ventas, busqueda, filtroEstado, filtroProducto]);
+  }, [ventas, busqueda, filtroEstado, filtroProducto, filtroFormaPago]);
 
   // Calcular totales de pedidos con varios productos
   const obtenerTotalPedido = (venta: Venta) => {
@@ -625,6 +634,23 @@ export const SalesView: React.FC = () => {
               </option>
             ))}
           </select>
+
+          
+          <select
+            value={filtroFormaPago}
+            onChange={(e) =>
+              setFiltroFormaPago(e.target.value as 'todas' | FormaPago)
+            }
+            className="px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 w-full sm:w-auto"
+          >
+            <option value="todas">Todas las formas de pago</option>
+            <option value="efectivo">Efectivo</option>
+            <option value="transferencia">Transferencia SPEI</option>
+            <option value="tarjeta_debito">Tarjeta de débito</option>
+            <option value="tarjeta_credito">Tarjeta de crédito</option>
+          </select>
+
+          
         </div>
       </div>
 

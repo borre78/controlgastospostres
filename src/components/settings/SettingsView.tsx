@@ -48,6 +48,9 @@ export const SettingsView: React.FC = () => {
   const [costoLuz, setCostoLuz] = useState(String(configuracion.costoHoraLuzDefault));
   const [costoMano, setCostoMano] = useState(String(configuracion.costoHoraManoObraDefault));
   const [guardadoExitoso, setGuardadoExitoso] = useState(false);
+  const [frecuenciaRevisionStock, setFrecuenciaRevisionStock] = useState<'semanal' | 'quincenal' | 'mensual' | 'personalizada'>
+    (configuracion.frecuenciaRevisionStock ?? 'quincenal');  
+  const [diasRevisionStock, setDiasRevisionStock] = useState(String(configuracion.diasRevisionStock ?? 15));
 
   // Modal Nueva Categoría
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
@@ -74,6 +77,11 @@ export const SettingsView: React.FC = () => {
       costoHoraGasDefault: parseFloat(costoGas) || 14,
       costoHoraLuzDefault: parseFloat(costoLuz) || 7.5,
       costoHoraManoObraDefault: parseFloat(costoMano) || 65,
+      frecuenciaRevisionStock,
+      diasRevisionStock: Math.max(
+        1,
+        parseInt(diasRevisionStock, 10) || 15
+      ),
     });
     setGuardadoExitoso(true);
     setTimeout(() => setGuardadoExitoso(false), 2000);
@@ -191,6 +199,62 @@ export const SettingsView: React.FC = () => {
         <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white">
           Parámetros Financieros y de Costeo
         </h3>
+
+        <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-3">
+          <div>
+            <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+              Revisión de inventario
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Define cada cuánto revisarás los insumos y sus existencias.
+            </p>
+          </div>
+                
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Frecuencia de revisión
+              </label>
+                
+              <select
+                value={frecuenciaRevisionStock}
+                onChange={(e) =>
+                  setFrecuenciaRevisionStock(
+                    e.target.value as
+                      | 'semanal'
+                      | 'quincenal'
+                      | 'mensual'
+                      | 'personalizada'
+                  )
+                }
+                className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+              >
+                <option value="semanal">Cada semana (7 días)</option>
+                <option value="quincenal">Cada 15 días</option>
+                <option value="mensual">Cada mes (30 días)</option>
+                <option value="personalizada">Personalizada</option>
+              </select>
+            </div>
+              
+            {frecuenciaRevisionStock === 'personalizada' && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Número de días
+                </label>
+            
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+                  value={diasRevisionStock}
+                  onChange={(e) => setDiasRevisionStock(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
+            )}
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>

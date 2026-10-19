@@ -112,6 +112,194 @@ export const ReportsView: React.FC = () => {
   const totalGastosNegocioEfectivo = gastosNegocio.reduce((s, g) => s + g.importe, 0);
   const totalGastosPersonalEfectivo = gastosPersonales.reduce((s, g) => s + g.importe, 0);
 
+  
+  // Comparación de gastos contra el periodo anterior
+  
+const comparacionGastos = useMemo(() => {
+  const parseFecha = (fecha: string) => {
+    const [anio, mes, dia] = fecha.split('-').map(Number);
+    return new Date(anio, mes - 1, dia);
+  };
+
+  const formatearFecha = (fecha: Date) => {
+    const anio = fecha.getFullYear();
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    return `${anio}-${mes}-${dia}`;
+  };
+
+  const hoy = parseFecha(getFechaHoy());
+  let inicioActual: Date;
+  let finActual: Date;
+  let inicioAnterior: Date;
+  let finAnterior: Date;
+
+  if (periodo === 'personalizado') {
+    if (!fechaInicio || !fechaFin || fechaInicio > fechaFin) {
+      return null;
+    }
+
+    inicioActual = parseFecha(fechaInicio);
+    finActual = parseFecha(fechaFin);
+
+    const diasPeriodo =
+      Math.round(
+        (finActual.getTime() - inicioActual.getTime()) / 86400000
+      ) + 1;
+
+    finAnterior = new Date(inicioActual);
+    finAnterior.setDate(finAnterior.getDate() - 1);
+
+    inicioAnterior = new Date(finAnterior);
+    inicioAnterior.setDate(inicioAnterior.getDate() - diasPeriodo + 1);
+  } else if (periodo === 'hoy') {
+    inicioActual = new Date(hoy);
+    finActual = new Date(hoy);
+
+    inicioAnterior = new Date(hoy);
+    inicioAnterior.setDate(inicioAnterior.getDate() - 1);
+    finAnterior = new Date(inicioAnterior);
+  } else if (periodo === 'semana') {
+    const diaSemana = (hoy.getDay() + 6) % 7;
+
+    inicioActual = new Date(hoy);
+    inicioActual.setDate(hoy.getDate() - diaSemana);
+
+    finActual = new Date(inicioActual);
+    finActual.setDate(finActual.getDate() + 6);
+
+    inicioAnterior = new Date(inicioActual);
+    inicioAnterior.setDate(inicioAnterior.getDate() - 7);
+
+    finAnterior = new Date(finActual);
+    finAnterior.setDate(finAnterior.getDate() - 7);
+  } else if (periodo === 'mes') {
+    inicioActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    finActual = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+
+    inicioAnterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+    finAnterior = new Date(hoy.getFullYear(), hoy.getMonth(), 0);
+  } else if (periodo === 'anio') {
+    inicioActual = new Date(hoy.getFullYear(), 0, 1);
+    finActual = new Date(hoy.getFullYear(), 11, 31);
+
+    inicioAnterior = new Date(hoy.getFullYear() - 1, 0, 1);
+    finAnterior = new Date(hoy.getFullYear() - 1, 11, 31);
+  } else {
+    return null;
+  }
+
+  const sumarGastos = (inicio: Date, fin: Date) => {
+    const desde = formatearFecha(inicio);
+    const hasta = formatearFecha(fin);
+
+    return gastos
+      .filter((g) => g.fecha >= desde && g.fecha <= hasta)
+      .reduce((total, g) => total + g.importe, 0);
+  };
+
+  const totalActual = sumarGastos(inicioActual, finActual);
+  const totalAnterior = sumarGastos(inicioAnterior, finAnterior);
+  const diferencia = totalActual - totalAnterior;
+
+  const variacionPorcentaje =
+    totalAnterior > 0
+      ? (diferencia / totalAnterior) * 100
+      : null;
+
+  return {
+    inicioActual: formatearFecha(inicioActual),
+    finActual: formatearFecha(finActual),
+    inicioAnterior: formatearFecha(inicioAnterior),
+    finAnterior: formatearFecha(finAnterior),
+    totalActual,
+    totalAnterior,
+    diferencia,
+    variacionPorcentaje,
+  };
+}, [gastos, periodo, fechaInicio, fechaFin]);
+
+
+  // Comparación de ventas y utilidad entre periodos
+  const comparacionFinanciera = useMemo(() => {
+    if (!comparacionGastos) return null;
+
+    const {
+      inicioActual,
+      finActual,
+      inicioAnterior,
+      finAnterior,
+    } = comparacionGastos;
+
+    const ventasDelPeriodo = (desde: string, hasta: string) =>
+      ventas.filter(
+        (v) => v.fecha >= desde && v.fecha <= hasta
+      );
+
+    const gastosDelPeriodo = (desde: string, hasta: string) =>
+      gastos.filter(
+        (g) =>
+          g.fecha >= desde &&
+          g.fecha <= hasta &&
+          g.ambito === 'negocio'
+      );
+
+    const calcularIndicadores = (desde: string, hasta: string) => {
+      const ventasPeriodo = ventasDelPeriodo(desde, hasta);
+      const gastosPeriodo = gastosDelPeriodo(desde, hasta);
+
+      const ingresos = ventasPeriodo.reduce(
+        (total, v) => total + v.totalVenta,
+        0
+      );
+
+      const costoVendido = ventasPeriodo.reduce(
+        (total, v) => total + v.costoTotalVendido,
+        0
+      );
+
+      const utilidadBrutaPeriodo = ingresos - costoVendido;
+
+      const gastosOperativos = gastosPeriodo
+        .filter(
+          (g) => g.tipoGastoNegocio !== 'inventario_materia_prima'
+        )
+        .reduce((total, g) => total + g.importe, 0);
+
+      return {
+        ingresos,
+        costoVendido,
+        utilidadBruta: utilidadBrutaPeriodo,
+        gastosOperativos,
+        utilidadOperativa: utilidadBrutaPeriodo - gastosOperativos,
+      };
+    };
+
+    const actual = calcularIndicadores(inicioActual, finActual);
+    const anterior = calcularIndicadores(inicioAnterior, finAnterior);
+
+    const calcularVariacion = (actual: number, anterior: number) => ({
+      diferencia: actual - anterior,
+      porcentaje:
+        anterior > 0
+          ? ((actual - anterior) / anterior) * 100
+          : null,
+    });
+
+    return {
+      actual,
+      anterior,
+      ventas: calcularVariacion(actual.ingresos, anterior.ingresos),
+      utilidad: calcularVariacion(
+        actual.utilidadOperativa,
+        anterior.utilidadOperativa
+      ),
+    };
+  }, [ventas, gastos, comparacionGastos]);
+
+
+
+
   // Desglose de Gastos por Categoría
   const gastosPorCategoria = useMemo(() => {
     const map = new Map<string, { nombre: string; total: number; ambito: string; color: string }>();
@@ -327,6 +515,203 @@ export const ReportsView: React.FC = () => {
           />
         </div>
       )}
+
+      
+      {/* COMPARACIÓN DE GASTOS */}
+      {comparacionGastos && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-lg font-black text-slate-900 dark:text-white">
+              Comparación de gastos
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Compara tus gastos con el periodo anterior de la misma duración.
+            </p>
+          </div>
+      
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            {/* Gasto actual */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Gastos del periodo actual
+              </p>
+              <p className="text-xl font-black text-slate-900 dark:text-white mt-2">
+                {formatMXN(comparacionGastos.totalActual)}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-2">
+                {formatFecha(comparacionGastos.inicioActual, true)} –{' '}
+                {formatFecha(comparacionGastos.finActual, true)}
+              </p>
+            </div>
+      
+            {/* Gasto anterior */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Gastos del periodo anterior
+              </p>
+              <p className="text-xl font-black text-slate-900 dark:text-white mt-2">
+                {formatMXN(comparacionGastos.totalAnterior)}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-2">
+                {formatFecha(comparacionGastos.inicioAnterior, true)} –{' '}
+                {formatFecha(comparacionGastos.finAnterior, true)}
+              </p>
+            </div>
+      
+            {/* Diferencia en pesos */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Diferencia en pesos
+              </p>
+              <p
+                className={`text-xl font-black mt-2 ${
+                  comparacionGastos.diferencia > 0
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : comparacionGastos.diferencia < 0
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-slate-900 dark:text-white'
+                }`}
+              >
+                {comparacionGastos.diferencia > 0 ? '+' : ''}
+                {formatMXN(comparacionGastos.diferencia)}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-2">
+                {comparacionGastos.diferencia > 0
+                  ? 'Gastaste más que en el periodo anterior'
+                  : comparacionGastos.diferencia < 0
+                    ? 'Gastaste menos que en el periodo anterior'
+                    : 'El gasto fue igual en ambos periodos'}
+              </p>
+            </div>
+                
+            {/* Variación porcentual */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Variación porcentual
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                {comparacionGastos.variacionPorcentaje !== null &&
+                  (comparacionGastos.variacionPorcentaje > 0 ? (
+                    <ArrowUpRight className="w-5 h-5 text-rose-500" />
+                  ) : comparacionGastos.variacionPorcentaje < 0 ? (
+                    <ArrowDownRight className="w-5 h-5 text-emerald-500" />
+                  ) : null)}
+                <p className="text-xl font-black text-slate-900 dark:text-white">
+                  {comparacionGastos.variacionPorcentaje === null
+                    ? 'N/D'
+                    : `${comparacionGastos.variacionPorcentaje > 0 ? '+' : ''}${comparacionGastos.variacionPorcentaje.toFixed(1)}%`}
+                </p>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2">
+                {comparacionGastos.variacionPorcentaje === null
+                  ? 'No hay gastos anteriores para calcular el porcentaje'
+                  : comparacionGastos.variacionPorcentaje > 0
+                    ? 'Aumento del gasto'
+                    : comparacionGastos.variacionPorcentaje < 0
+                      ? 'Reducción del gasto'
+                      : 'Sin variación'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      
+      {/* COMPARACIÓN DE VENTAS Y UTILIDAD */}
+      {comparacionFinanciera && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-lg font-black text-slate-900 dark:text-white">
+              Comparación de ventas y utilidad
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Resultados del periodo actual frente al periodo anterior.
+            </p>
+          </div>
+      
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            {/* Ventas actuales */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Ventas actuales
+              </p>
+              <p className="text-xl font-black text-slate-900 dark:text-white mt-2">
+                {formatMXN(comparacionFinanciera.actual.ingresos)}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-2">
+                Periodo seleccionado
+              </p>
+            </div>
+      
+            {/* Ventas anteriores */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Ventas del periodo anterior
+              </p>
+              <p className="text-xl font-black text-slate-900 dark:text-white mt-2">
+                {formatMXN(comparacionFinanciera.anterior.ingresos)}
+              </p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-400 mt-2">
+                Periodo de comparación
+              </p>
+            </div>
+      
+            {/* Variación de ventas */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Variación de ventas
+              </p>
+              <p className={`text-xl font-black mt-2 ${
+                comparacionFinanciera.ventas.diferencia > 0
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : comparacionFinanciera.ventas.diferencia < 0
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : 'text-slate-900 dark:text-white'
+              }`}>
+                {comparacionFinanciera.ventas.diferencia > 0 ? '+' : ''}
+                {formatMXN(comparacionFinanciera.ventas.diferencia)}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-2">
+                {comparacionFinanciera.ventas.porcentaje === null
+                  ? 'Sin base anterior para calcular porcentaje'
+                  : `${comparacionFinanciera.ventas.porcentaje > 0 ? '+' : ''}${comparacionFinanciera.ventas.porcentaje.toFixed(1)}% respecto al periodo anterior`}
+              </p>
+            </div>
+                
+            {/* Utilidad operativa */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Utilidad operativa actual
+              </p>
+              <p className={`text-xl font-black mt-2 ${
+                comparacionFinanciera.actual.utilidadOperativa >= 0
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-rose-600 dark:text-rose-400'
+              }`}>
+                {formatMXN(comparacionFinanciera.actual.utilidadOperativa)}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-2">
+                Anterior: {formatMXN(comparacionFinanciera.anterior.utilidadOperativa)}
+              </p>
+              <p className={`text-[11px] font-semibold mt-1 ${
+                comparacionFinanciera.utilidad.diferencia > 0
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : comparacionFinanciera.utilidad.diferencia < 0
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : 'text-slate-500 dark:text-slate-400'
+              }`}>
+                Diferencia: {comparacionFinanciera.utilidad.diferencia > 0 ? '+' : ''}
+                {formatMXN(comparacionFinanciera.utilidad.diferencia)}
+                {comparacionFinanciera.utilidad.porcentaje !== null
+                  ? ` (${comparacionFinanciera.utilidad.porcentaje > 0 ? '+' : ''}${comparacionFinanciera.utilidad.porcentaje.toFixed(1)}%)`
+                  : ''}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+
 
       {/* ESTADO DE RESULTADOS EJECUTIVO (P&L) */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">

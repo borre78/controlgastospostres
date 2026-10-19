@@ -76,7 +76,7 @@ useEffect(() => {
       <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Contenedor Principal con Sidebar y Área de Contenido */}
-      <div className="flex-1 flex flex-col lg:flex-row max-w-7xl w-full min-w-0 mx-auto">
+      <div className="flex-1 flex flex-col lg:flex-row w-full min-w-0 mx-auto">
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
         {/* Vista activa del módulo */}
@@ -89,7 +89,8 @@ useEffect(() => {
             maxWidth: '100%',
             minWidth: 0,
           }}
-          className="p-3.5 sm:p-6 lg:p-8 overflow-x-hidden pb-20 lg:pb-8">
+          className="flex-1 min-w-0 p-3.5 sm:p-5 lg:p-6 overflow-x-hidden pb-20 lg:pb-6">
+          {/* className="p-3.5 sm:p-6 lg:p-8 overflow-x-hidden pb-20 lg:pb-8"> */}
           {renderActiveModule()}
         </main>
       </div>

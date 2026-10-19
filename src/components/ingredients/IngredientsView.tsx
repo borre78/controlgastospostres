@@ -30,6 +30,8 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 export const IngredientsView: React.FC = () => {
   const {
     insumos,
+    configuracion,
+    updateConfiguracion,
     gastos,
     addInsumo,
     updateInsumo,
@@ -79,6 +81,7 @@ const insumosPendientesCompraHistorica = insumos.filter(
   const [formCantidadCompra, setFormCantidadCompra] = useState('1');
   const [formPrecioCompra, setFormPrecioCompra] = useState('');
   const [formStockMinimo, setFormStockMinimo] = useState('200');
+  const [formStockRequerido, setFormStockRequerido] = useState('0');
   const [formProveedor, setFormProveedor] = useState('');
   const [formNotas, setFormNotas] = useState('');
 
@@ -147,6 +150,7 @@ const calculoEnVivo = useMemo(() => {
     setFormCantidadCompra('1');
     setFormPrecioCompra('');
     setFormStockMinimo('200');
+    setFormStockRequerido('0');
     setFormProveedor('');
     setFormNotas('');
     setIsModalOpen(true);
@@ -162,6 +166,7 @@ const calculoEnVivo = useMemo(() => {
     setFormCantidadCompra(String(ins.cantidadCompra));
     setFormPrecioCompra(String(ins.precioCompra));
     setFormStockMinimo(String(ins.stockMinimo));
+    setFormStockRequerido(String(ins.stockRequerido ?? 0));
     setFormProveedor(ins.proveedor || '');
     setFormNotas(ins.notas || '');
     setIsModalOpen(true);
@@ -175,6 +180,7 @@ const calculoEnVivo = useMemo(() => {
     const cantCompra = parseFloat(formCantidadCompra);
     const precioCompra = parseFloat(formPrecioCompra);
     const stockMin = parseFloat(formStockMinimo) || 0;
+    const stockReq = Math.max(0, parseFloat(formStockRequerido) || 0);
 
     if (!formNombre.trim() || isNaN(cantCompra) || cantCompra <= 0 || isNaN(precioCompra) || precioCompra <= 0) {
       alert('Por favor ingresa un nombre, cantidad comprada y precio válidos.');
@@ -200,6 +206,7 @@ const calculoEnVivo = useMemo(() => {
         cantidadEnUnidadUso: cantidadTotal,
         costoPorUnidadUso,
         stockMinimo: stockMin,
+        stockRequerido: stockReq,
         proveedor: formProveedor.trim() || undefined,
         notas: formNotas.trim() || undefined,
         piezasPorPaquete:
@@ -222,6 +229,7 @@ const calculoEnVivo = useMemo(() => {
         costoPorUnidadUso,
         stockActual: cantidadTotal, // Arranca con el stock recién comprado
         stockMinimo: stockMin,
+        stockRequerido: stockReq,
         proveedor: formProveedor.trim() || undefined,
         notas: formNotas.trim() || undefined,
         piezasPorPaquete:
@@ -321,6 +329,72 @@ const calculoEnVivo = useMemo(() => {
   // Contadores
   const totalInsumos = insumos.length;
   const insumosBajoStockCount = insumos.filter((i) => i.stockActual <= i.stockMinimo).length;
+
+  const handleRegistrarRevision = () => {
+    const confirmar = window.confirm(
+      '¿Confirmas que realizaste la revisión del inventario de hoy?'
+    );
+
+    if (!confirmar) return;
+
+    const fechaHoy = new Date();
+    const fechaLocal =
+      `${fechaHoy.getFullYear()}-${String(fechaHoy.getMonth() + 1).padStart(2, '0')}-${String(fechaHoy.getDate()).padStart(2, '0')}`;
+
+    updateConfiguracion({
+      fechaUltimaRevisionStock: fechaLocal,
+    });
+
+    alert('La revisión de inventario se registró correctamente.');
+  };
+
+  // Configuración de la revisión de inventario
+  const frecuenciaRevision = configuracion.frecuenciaRevisionStock ?? 'quincenal';
+  
+  const diasEntreRevisiones = (() => {
+    switch (frecuenciaRevision) {
+      case 'semanal':
+        return 7;
+      case 'quincenal':
+        return 15;
+      case 'mensual':
+        return 30;
+      case 'personalizada':
+        return Math.max(1, configuracion.diasRevisionStock ?? 15);
+      default:
+        return 15;
+    }
+  })();
+  
+  // Comparar fechas sin considerar la hora
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  
+  const fechaUltimaRevision = configuracion.fechaUltimaRevisionStock
+    ? new Date(`${configuracion.fechaUltimaRevisionStock.slice(0, 10)}T00:00:00`)
+    : null;
+  
+  const fechaProximaRevision = fechaUltimaRevision
+    ? new Date(
+        fechaUltimaRevision.getTime() +
+          diasEntreRevisiones * 24 * 60 * 60 * 1000
+      )
+    : null;
+    
+  // Si nunca se ha registrado una revisión, se considera pendiente
+  const revisionPendiente =
+    !fechaUltimaRevision ||
+    Number.isNaN(fechaUltimaRevision.getTime()) ||
+    !fechaProximaRevision ||
+    hoy >= fechaProximaRevision;
+    
+  const insumosConFaltante = insumos.filter(
+    (ins) =>
+      (ins.stockRequerido ?? 0) > 0 &&
+      ins.stockActual < (ins.stockRequerido ?? 0)
+  );
+
+
   const valorTotalInventario = insumos.reduce(
     (sum, i) => sum + i.stockActual * i.costoPorUnidadUso,
     0
@@ -364,7 +438,7 @@ const calculoEnVivo = useMemo(() => {
             Insumos pendientes: {insumosPendientesCompraHistorica.length}
           </p>
         </div>
-        
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -378,7 +452,7 @@ const calculoEnVivo = useMemo(() => {
               className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
             />
           </div>
-        
+
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
               Forma de pago
@@ -407,6 +481,75 @@ const calculoEnVivo = useMemo(() => {
           Registrar compras pendientes
         </button>
       </div>
+
+      
+      {/* Alerta de revisión de inventario */}
+      {revisionPendiente && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+
+            <div className="min-w-0 flex-1">
+              <h3 className="font-bold text-amber-900 dark:text-amber-200">
+                Revisión de inventario pendiente
+              </h3>
+
+              <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">
+                {fechaUltimaRevision
+                  ? `Han transcurrido al menos ${diasEntreRevisiones} días desde la última revisión.`
+                  : 'Todavía no se ha registrado una revisión de inventario.'}
+              </p>
+
+              <button
+                type="button"
+                onClick={handleRegistrarRevision}
+                className="mt-3 rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-amber-600"
+              >
+                Registrar revisión de hoy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Alerta de insumos con faltantes */}
+      {insumosConFaltante.length > 0 && (
+        <div className="rounded-2xl border border-rose-300 bg-rose-50 p-4 dark:border-rose-800 dark:bg-rose-950/30">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
+
+            <div className="min-w-0 flex-1">
+              <h3 className="font-bold text-rose-900 dark:text-rose-200">
+                Reabastecimiento pendiente
+              </h3>
+
+              <p className="mt-1 text-sm text-rose-800 dark:text-rose-300">
+                Tienes {insumosConFaltante.length} insumo(s) por debajo del stock requerido.
+              </p>
+
+              <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-rose-800 dark:text-rose-300">
+                {insumosConFaltante.slice(0, 5).map((ins) => (
+                  <li key={ins.id}>
+                    {ins.nombre}: faltan{' '}
+                    {Math.max(
+                      0,
+                      (ins.stockRequerido ?? 0) - ins.stockActual
+                    )}{' '}
+                    {ins.unidadUso}
+                  </li>
+                ))}
+              </ul>
+
+              {insumosConFaltante.length > 5 && (
+                <p className="mt-2 text-xs text-rose-700 dark:text-rose-400">
+                  Y {insumosConFaltante.length - 5} insumos más con faltante.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
 
 
       {/* Métricas del Catálogo */}
@@ -500,13 +643,15 @@ const calculoEnVivo = useMemo(() => {
                   Costo por Unidad de Receta
                 </th>
                 <th className="py-3 px-4">Stock Actual</th>
+                <th className="px-4 py-3 text-left">Stock requerido</th>
+                <th className="px-4 py-3 text-left">Faltante</th>
                 <th className="py-3 px-4 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
               {insumosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     No hay insumos registrados. Haz clic en "+ Nuevo Insumo".
                   </td>
                 </tr>
@@ -602,6 +747,33 @@ const calculoEnVivo = useMemo(() => {
                         <span className="text-[10px] text-slate-400">Mín: {ins.stockMinimo} {ins.unidadUso}</span>
                       </td>
 
+                      <td className="px-4 py-3">
+                        {(ins.stockRequerido ?? 0) > 0 ? (
+                          <span>
+                            {ins.stockRequerido} {ins.unidadUso}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">Sin configurar</span>
+                        )}
+                      </td>
+                      
+                      <td className="px-4 py-3">
+                        {(ins.stockRequerido ?? 0) > 0 ? (
+                          <span
+                            className={
+                              Math.max(0, (ins.stockRequerido ?? 0) - ins.stockActual) > 0
+                                ? 'font-semibold text-red-600'
+                                : 'font-semibold text-green-600'
+                            }
+                          >
+                            {Math.max(0, (ins.stockRequerido ?? 0) - ins.stockActual)}{' '}
+                            {ins.unidadUso}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+
                       <td
                         className="py-3 px-4 whitespace-nowrap text-center"
                         onTouchStart={(e) => e.stopPropagation()}
@@ -627,7 +799,7 @@ const calculoEnVivo = useMemo(() => {
                             className="hidden sm:inline-flex p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                             title="Ajustar stock físico"
                           >
-                            <RefreshCw className="w-3.5 h-3.5" />
+                            <RefreshCw className="w-5 h-5" />
                           </button>
                           <button
                             onClick={() => handleOpenEditar(ins)}
@@ -868,6 +1040,26 @@ const calculoEnVivo = useMemo(() => {
                 className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Stock requerido ({calculoEnVivo.unidadUso})
+            </label>
+
+            <input
+              type="number"
+              min="0"
+              step="any"
+              placeholder="Ej. 500"
+              value={formStockRequerido}
+              onChange={(e) => setFormStockRequerido(e.target.value)}
+              className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+            />
+
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Cantidad que deseas tener disponible.
+            </p>
           </div>
 
           {/* VISTA PREVIA DEL CÁLCULO AUTOMÁTICO */}
