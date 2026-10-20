@@ -88,8 +88,8 @@ interface AppContextType {
   deletePresentacion: (productoId: string, presentacionId: string) => boolean;
 
   // Ventas
-  addVenta: (venta: Omit<Venta, 'id'>, descontarStock?: boolean) => void;
-  updateVenta: (id: string, venta: Partial<Venta>) => void;
+  addVenta: (venta: Omit<Venta, 'id'>, descontarStock?: boolean) => {success: boolean; mensaje: string;};
+  updateVenta: (id: string, cambios: Partial<Venta>) => {success: boolean; mensaje: string;};
   deleteVenta: (id: string) => void;
   marcarVentaCobrada: (id: string, formaPago: Gasto['formaPago']) => void;
 
@@ -509,15 +509,7 @@ setVentas(ventasActualizadas);
         const costoCalculado = ing.cantidad * costoUnit;
         costoIngredientes += costoCalculado;
         return { ...ing, costoCalculado };
-      });
-
-      let costoEmpaques = 0;
-      const nuevosEmpaques = (receta.empaques || []).map((emp) => {
-        const costoUnit = insumoMap.get(emp.insumoId) || 0;
-        const costoCalculado = emp.cantidad * costoUnit;
-        costoEmpaques += costoCalculado;
-        return { ...emp, costoCalculado };
-      });
+      });      
 
       let costoDesechables = 0;
       const nuevosDesechables = (receta.desechables || []).map((item) => {
@@ -541,20 +533,20 @@ setVentas(ventasActualizadas);
         (receta.indirectos?.costoManoObra || 0) +
         (receta.indirectos?.otrosCostosFijos || 0);
 
-      const costoTotalReceta = costoIngredientes + costoEmpaques + costoDesechables + costoOtrosInsumos + costoIndirectos;
+      const costoTotalReceta = costoIngredientes + costoIndirectos;
       const rendimiento = receta.rendimientoCantidad > 0 ? receta.rendimientoCantidad : 1;
       const costoPorUnidad = costoTotalReceta / rendimiento;
 
       return {
         ...receta,
         ingredientes: nuevosIngredientes,
-        empaques: nuevosEmpaques,
-        desechables: nuevosDesechables,
-        otrosInsumos: nuevosOtrosInsumos,
+        empaques: [],
+        desechables: [],
+        otrosInsumos:[],
         costoIngredientes,
-        costoEmpaques,
-        costoDesechables,
-        costoOtrosInsumos,
+        costoEmpaques: 0,
+        costoDesechables: 0,
+        costoOtrosInsumos: 0,
         costoIndirectos,
         costoTotalReceta,
         costoPorUnidad,
@@ -742,58 +734,219 @@ const updatePresentacion = (
 
   // ==================== VENTAS ====================
 
-  const addVenta = (ventaData: Omit<Venta, 'id'>, descontarStock = true) => {
-    const id = `vta-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+  const addVenta = (
+  ventaData: Omit<Venta, 'id'>,
+  descontarStock = true
+  ): { success: boolean; mensaje: string } => {
+    const producto = productos.find(
+      (p) => p.id === ventaData.productoId
+    );
+
+    const presentacion = producto?.presentaciones?.find(
+      (p) => p.id === ventaData.presentacionId
+    );
+
+    if (descontarStock) {
+      if (!producto || !presentacion) {
+        return {
+          success: false,
+          mensaje: 'Selecciona un producto y una presentación válidos.',
+        };
+      }
+
+      const stockDisponible = Math.max(
+        0,
+        presentacion.stockListo || 0
+      );
+
+      if (stockDisponible <= 0) {
+        return {
+          success: false,
+          mensaje: `La presentación "${presentacion.nombre}" está agotada.`,
+        };
+      }
+
+      if (
+        !Number.isFinite(ventaData.cantidad) ||
+        ventaData.cantidad <= 0
+      ) {
+        return {
+          success: false,
+          mensaje: 'La cantidad debe ser mayor que cero.',
+        };
+      }
+
+      if (ventaData.cantidad > stockDisponible) {
+        return {
+          success: false,
+          mensaje: `Solo tienes ${stockDisponible} en stock. La cantidad solicitada es mayor que las existencias.`,
+        };
+      }
+
+      for (const empaque of presentacion.empaques || []) {
+        const insumo = insumos.find(
+          (i) => i.id === empaque.insumoId
+        );
+      
+        if (!insumo) {
+          return {
+            success: false,
+            mensaje: 'No se encontró un insumo de empaque asociado a la presentación.',
+          };
+        }
+      
+        const cantidadRequerida =
+    empaque.cantidad * ventaData.cantidad;
+
+  if (
+    !Number.isFinite(cantidadRequerida) ||
+          cantidadRequerida < 0 ||
+          insumo.stockActual < cantidadRequerida
+        ) {
+          return {
+            success: false,
+            mensaje: `No hay suficientes existencias de ${insumo.nombre}.`,
+          };
+        }
+      }
+    }
+
+    const empaquesDescontados: {
+      insumoId: string;
+      cantidadTotal: number;
+    }[] = [];
+
+    if (descontarStock && presentacion) {
+      for (const empaque of presentacion.empaques || []) {
+        const existente = empaquesDescontados.find(
+          (e) => e.insumoId === empaque.insumoId
+        );
+      
+        const cantidadTotal =
+          empaque.cantidad * ventaData.cantidad;
+      
+        if (existente) {
+          existente.cantidadTotal += cantidadTotal;
+        } else {
+          empaquesDescontados.push({
+            insumoId: empaque.insumoId,
+            cantidadTotal,
+          });
+        }
+      }
+    }
+
+    const id = `vta-${Date.now()}-${Math.random()
+      .toString(36)
+      .substr(2, 4)}`;
+
     const nueva: Venta = {
       ...ventaData,
       id,
       descontoStock: descontarStock,
+      empaquesDescontados,
     };
 
     setVentas((prev) => [nueva, ...prev]);
 
-    // Descontar stock de la presentación vendida si aplica
-    if (descontarStock && ventaData.productoId) {
+    if (descontarStock && producto && presentacion) {
       setProductos((prev) =>
         prev.map((p) => {
-          if (p.id !== ventaData.productoId) return p;
-          const presActualizadas = (p.presentaciones || []).map((pres) => {
-            if (ventaData.presentacionId && pres.id === ventaData.presentacionId) {
-              return {
-                ...pres,
-                stockListo: Math.max(0, (pres.stockListo || 0) - ventaData.cantidad),
-              };
-            }
-            return pres;
-          });
-          return { ...p, presentaciones: presActualizadas };
+          if (p.id !== producto.id) return p;
+
+          return {
+            ...p,
+            presentaciones: (p.presentaciones || []).map((pres) =>
+              pres.id === presentacion.id
+                ? {
+                    ...pres,
+                    stockListo:
+                      (pres.stockListo || 0) - ventaData.cantidad,
+                  }
+                : pres
+            ),
+          };
         })
       );
 
-      // Descontar empaques correspondientes del inventario de insumos
-      const prod = productos.find((p) => p.id === ventaData.productoId);
-      const pres = prod?.presentaciones?.find((pr) => pr.id === ventaData.presentacionId);
-      if (pres && pres.empaques && pres.empaques.length > 0) {
-        setInsumos((prev) =>
-          prev.map((ins) => {
-            const empUsado = pres.empaques.find((e) => e.insumoId === ins.id);
-            if (empUsado) {
-              const cantidadDescontar = empUsado.cantidad * ventaData.cantidad;
-              return {
-                ...ins,
-                stockActual: Math.max(0, ins.stockActual - cantidadDescontar),
-                fechaActualizacion: new Date().toISOString().split('T')[0],
-              };
-            }
-            return ins;
-          })
-        );
-      }
+      setInsumos((prev) =>
+        prev.map((insumo) => {
+          const empaque = empaquesDescontados.find(
+            (e) => e.insumoId === insumo.id
+          );
+
+          if (!empaque) return insumo;
+
+          return {
+            ...insumo,
+            stockActual: insumo.stockActual - empaque.cantidadTotal,
+            fechaActualizacion: new Date().toISOString().split('T')[0],
+          };
+        })
+      );
     }
+
+    return {
+      success: true,
+      mensaje: 'Venta registrada correctamente.',
+    };
   };
 
-  const updateVenta = (id: string, cambios: Partial<Venta>) => {
-    setVentas((prev) => prev.map((v) => (v.id === id ? { ...v, ...cambios } : v)));
+  const updateVenta = (
+  id: string,
+  cambios: Partial<Venta>
+  ): { success: boolean; mensaje: string } => {
+    const ventaAnterior = ventas.find((v) => v.id === id);
+
+    if (!ventaAnterior) {
+      return {
+        success: false,
+        mensaje: 'No se encontró la venta que deseas modificar.',
+      };
+    }
+
+    const ventaActualizada: Venta = {
+      ...ventaAnterior,
+      ...cambios,
+      id: ventaAnterior.id,
+    };
+
+    // Si la venta original no descontó inventario, actualizamos
+    // únicamente sus datos comerciales.
+    if (ventaAnterior.descontoStock !== true) {
+      setVentas((prev) =>
+        prev.map((v) => (v.id === id ? ventaActualizada : v))
+      );
+
+      return {
+        success: true,
+        mensaje: 'Venta actualizada correctamente.',
+      };
+    }
+
+    // No permitir cambiar el producto o presentación sin procesar
+    // correctamente la devolución y el nuevo descuento.
+    const cambiaInventario =
+      ventaActualizada.productoId !== ventaAnterior.productoId ||
+      ventaActualizada.presentacionId !== ventaAnterior.presentacionId ||
+      ventaActualizada.cantidad !== ventaAnterior.cantidad;
+
+    if (cambiaInventario) {
+      return {
+        success: false,
+        mensaje:
+          'Para cambiar el producto, la presentación o la cantidad debemos validar el inventario antes de guardar. No se modificó la venta.',
+      };
+    }
+
+    setVentas((prev) =>
+      prev.map((v) => (v.id === id ? ventaActualizada : v))
+    );
+
+    return {
+      success: true,
+      mensaje: 'Venta actualizada correctamente.',
+    };
   };
 
   
@@ -837,35 +990,56 @@ const updatePresentacion = (
             presentaciones: presentacionesActualizadas,
           };
         })
-      );
-    
+      );    
+      
       // Restaurar los empaques descontados.
-      const producto = productos.find(
-        (p) => p.id === ventaAEliminar.productoId
-      );
-    
-      const presentacion = producto?.presentaciones?.find(
-        (p) => p.id === ventaAEliminar.presentacionId
-      );
-    
-      if (presentacion?.empaques?.length) {
+      if (ventaAEliminar.empaquesDescontados?.length) {
         setInsumos((prev) =>
           prev.map((insumo) => {
-            const empaqueUsado = presentacion.empaques!.find(
-              (empaque) => empaque.insumoId === insumo.id
-            );
-          
+            const empaqueUsado =
+              ventaAEliminar.empaquesDescontados!.find(
+                (empaque) => empaque.insumoId === insumo.id
+              );
+            
             if (!empaqueUsado) return insumo;
-          
+            
             return {
               ...insumo,
               stockActual:
-                insumo.stockActual +
-                empaqueUsado.cantidad * ventaAEliminar.cantidad,
+                insumo.stockActual + empaqueUsado.cantidadTotal,
               fechaActualizacion: new Date().toISOString().split('T')[0],
             };
           })
         );
+      } else {
+        // Compatibilidad con ventas antiguas sin historial de empaques.
+        const producto = productos.find(
+          (p) => p.id === ventaAEliminar.productoId
+        );
+      
+        const presentacion = producto?.presentaciones?.find(
+          (p) => p.id === ventaAEliminar.presentacionId
+        );
+      
+        if (presentacion?.empaques?.length) {
+          setInsumos((prev) =>
+            prev.map((insumo) => {
+              const empaqueUsado = presentacion.empaques!.find(
+                (empaque) => empaque.insumoId === insumo.id
+              );
+            
+              if (!empaqueUsado) return insumo;
+            
+              return {
+                ...insumo,
+                stockActual:
+                  insumo.stockActual +
+                  empaqueUsado.cantidad * ventaAEliminar.cantidad,
+                fechaActualizacion: new Date().toISOString().split('T')[0],
+              };
+            })
+          );
+        }
       }
     }
   };
@@ -981,9 +1155,6 @@ const updatePresentacion = (
 
     const consumosReceta = [
       ...(receta.ingredientes || []),
-      ...(receta.empaques || []),
-      ...(receta.desechables || []),
-      ...(receta.otrosInsumos || []),
     ];
     
     for (const item of consumosReceta) {

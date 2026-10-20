@@ -22,6 +22,7 @@ export interface Insumo {
   stockMinimo: number; // Alerta cuando stockActual <= stockMinimo
   proveedor?: string;
   notas?: string;
+  imagenUrl?: string;
   fechaActualizacion: string;
   esDemostracion?: boolean;
   stockRequerido?: number; /** Cantidad que se desea tener disponible en cada revisión */
@@ -176,6 +177,11 @@ export interface Venta {
   notas?: string;
   esDemostracion?: boolean;
   descontoStock?: boolean;
+  // Registro histórico de empaques descontados al realizar la venta
+  empaquesDescontados?: {
+    insumoId: string;
+    cantidadTotal: number;
+  }[];
 }
 
 export interface Gasto {

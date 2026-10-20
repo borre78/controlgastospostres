@@ -52,12 +52,13 @@ export const SalesView: React.FC = () => {
 
   // Form State
   type ProductoEnPedido = {
-  productoId: string;
-  presentacionId: string;
-  cantidad: string;
-  precioUnitario: string;
-  descuento: string;
-};
+    id: string;
+    productoId: string;
+    presentacionId: string;
+    cantidad: string;
+    precioUnitario: string;
+    descuento: string;
+  };
 
   const [productosPedido, setProductosPedido] = useState<ProductoEnPedido[]>([]);
   const [fecha, setFecha] = useState(getFechaHoy);
@@ -80,7 +81,9 @@ export const SalesView: React.FC = () => {
 
   const productoSeleccionado = productoMap.get(productoId);
   const presentacionesDisponibles = useMemo(() => {
-    return productoSeleccionado?.presentaciones || [];
+    return (productoSeleccionado?.presentaciones || []).filter(
+      (p) => p.activo !== false
+    );
   }, [productoSeleccionado]);
 
   const presentacionSeleccionada = useMemo(() => {
@@ -136,7 +139,7 @@ export const SalesView: React.FC = () => {
 
     const stockDisponible = presentacionSeleccionada?.stockListo || 0;
     const stockInsuficiente =
-      stockDisponible > 0 && cant > stockDisponible;
+      !!presentacionSeleccionada && cant > stockDisponible;
 
     // Análisis de volumen de receta e insumos del producto principal
     const recetaBase = recetas.find(
@@ -243,17 +246,27 @@ export const SalesView: React.FC = () => {
   };
 
   const agregarProductoAlPedido = () => {
-    const primerProducto = productos.find((p) => p.activo !== false) || productos[0];
-    const primeraPresentacion = primerProducto?.presentaciones?.[0];
+    const primerProducto = productos.find(
+      (p) =>
+        p.activo !== false &&
+        p.presentaciones?.some(
+          (pres) => (pres.stockListo || 0) > 0
+        )
+    );
+
+    const primeraPresentacion = primerProducto?.presentaciones?.find(
+      (pres) => (pres.stockListo || 0) > 0
+    );
 
     if (!primerProducto || !primeraPresentacion) {
-      alert('No hay productos con presentaciones disponibles.');
+      alert('No hay presentaciones con existencias disponibles para agregar al pedido.');
       return;
     }
 
     setProductosPedido((prev) => [
       ...prev,
       {
+        id: `pedido-item-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
         productoId: primerProducto.id,
         presentacionId: primeraPresentacion.id,
         cantidad: '1',
@@ -307,7 +320,38 @@ export const SalesView: React.FC = () => {
     }
 
     // Validar los productos adicionales antes de guardar
+     // Validar los productos adicionales antes de guardar
     if (!editingVenta) {
+      // 1. Validar el stock del producto principal
+      if (descontarStock) {
+        if (!presentacionSeleccionada) {
+          alert('Selecciona una presentación válida.');
+          return;
+        }
+
+        const stockPrincipal = Math.max(
+          0,
+          presentacionSeleccionada.stockListo || 0
+        );
+
+        if (cant > stockPrincipal) {
+          alert(`Solo tienes ${stockPrincipal} en stock de ${presentacionSeleccionada.nombre}.`);
+          return;
+        }
+
+        // Verificar empaques del producto principal
+        for (const empaque of presentacionSeleccionada.empaques || []) {
+          const insumo = insumos.find((i) => i.id === empaque.insumoId);
+          const requerido = empaque.cantidad * cant;
+
+          if (insumo && insumo.stockActual < requerido) {
+            alert(`No hay suficientes existencias de ${insumo.nombre}.`);
+            return;
+          }
+        }
+      }
+
+      // 2. Validar los productos adicionales
       for (let i = 0; i < productosPedido.length; i++) {
         const item = productosPedido[i];
         const cantidadItem = parseFloat(item.cantidad);
@@ -331,6 +375,176 @@ export const SalesView: React.FC = () => {
             `Revisa el producto adicional ${i + 1}: selecciona una presentación e indica cantidad y precio válidos.`
           );
           return;
+        }
+
+        if (descontarStock) {
+          const stockItem = Math.max(
+            0,
+            presentacionItem.stockListo || 0
+          );
+
+          if (cantidadItem > stockItem) {
+            alert(
+              `Solo tienes ${stockItem} en stock de ${presentacionItem.nombre}.`
+            );
+            return;
+          }
+
+          for (const empaque of presentacionItem.empaques || []) {
+            const insumo = insumos.find((i) => i.id === empaque.insumoId);
+            const requerido = empaque.cantidad * cantidadItem;
+
+            if (insumo && insumo.stockActual < requerido) {
+              alert(
+                `No hay suficientes existencias de ${insumo.nombre} para ${presentacionItem.nombre}.`
+              );
+              return;
+            }
+          }
+        }
+      }
+
+      // Validar el stock acumulado por presentación
+      if (descontarStock) {
+        const cantidadesPorPresentacion = new Map<
+          string,
+          { cantidad: number; nombre: string; stock: number }
+        >();
+      
+        const acumularPresentacion = (
+          productoIdValidar: string,
+          presentacionIdValidar: string,
+          cantidadVenta: number
+        ) => {
+          const productoValidar = productoMap.get(productoIdValidar);
+          const presentacionValidar = productoValidar?.presentaciones?.find(
+            (p) => p.id === presentacionIdValidar
+          );
+        
+          if (!presentacionValidar) {
+            alert('No se encontró una presentación válida en el pedido.');
+            return false;
+          }
+        
+          const clave = `${productoIdValidar}-${presentacionIdValidar}`;
+          const anterior = cantidadesPorPresentacion.get(clave);
+        
+          const cantidadAcumulada =
+            (anterior?.cantidad || 0) + cantidadVenta;
+        
+          const stockDisponible = Math.max(
+            0,
+            presentacionValidar.stockListo || 0
+          );
+        
+          if (cantidadAcumulada > stockDisponible) {
+            alert(
+              `Stock insuficiente de ${presentacionValidar.nombre}. Necesitas ${cantidadAcumulada} y tienes ${stockDisponible}.`
+            );
+            return false;
+          }
+        
+          cantidadesPorPresentacion.set(clave, {
+            cantidad: cantidadAcumulada,
+            nombre: presentacionValidar.nombre,
+            stock: stockDisponible,
+          });
+        
+          return true;
+        };
+      
+        if (
+          !acumularPresentacion(productoId, presentacionId, cant)
+        ) {
+          return;
+        }
+      
+        for (const item of productosPedido) {
+          if (
+            !acumularPresentacion(
+              item.productoId,
+              item.presentacionId,
+              Number(item.cantidad)
+            )
+          ) {
+            return;
+          }
+        }
+      }
+
+
+       // 3. Validar el consumo acumulado de empaques del pedido
+      if (descontarStock) {
+        const consumoEmpaques = new Map<
+          string,
+          { cantidad: number; nombre: string }
+        >();
+
+        const acumularEmpaques = (
+          empaques: { insumoId: string; cantidad: number }[],
+          cantidadVenta: number
+        ) => {
+          for (const empaque of empaques || []) {
+            const insumo = insumos.find(
+              (i) => i.id === empaque.insumoId
+            );
+
+            if (!insumo) {
+              alert(
+                'No se encontró un insumo de empaque asociado a una presentación.'
+              );
+              return false;
+            }
+
+            const anterior = consumoEmpaques.get(insumo.id);
+
+            consumoEmpaques.set(insumo.id, {
+              cantidad:
+                (anterior?.cantidad || 0) +
+                empaque.cantidad * cantidadVenta,
+              nombre: insumo.nombre,
+            });
+          }
+
+          return true;
+        };
+
+        if (
+          !presentacionSeleccionada ||
+          !acumularEmpaques(
+            presentacionSeleccionada.empaques || [],
+            cant
+          )
+        ) {
+          return;
+        }
+
+        for (const item of productosPedido) {
+          const productoItem = productoMap.get(item.productoId);
+          const presentacionItem = productoItem?.presentaciones?.find(
+            (p) => p.id === item.presentacionId
+          );
+
+          if (
+            !presentacionItem ||
+            !acumularEmpaques(
+              presentacionItem.empaques || [],
+              Number(item.cantidad)
+            )
+          ) {
+            return;
+          }
+        }
+
+        for (const [insumoId, consumo] of consumoEmpaques) {
+          const insumo = insumos.find((i) => i.id === insumoId);
+
+          if (!insumo || insumo.stockActual < consumo.cantidad) {
+            alert(
+              `Existencias insuficientes de ${consumo.nombre}. Necesitas ${consumo.cantidad} y tienes ${insumo?.stockActual ?? 0}.`
+            );
+            return;
+          }
         }
       }
     }
@@ -359,7 +573,7 @@ export const SalesView: React.FC = () => {
     };
 
     if (editingVenta) {
-      updateVenta(editingVenta.id, {
+      const resultadoEdicion = updateVenta(editingVenta.id, {
         ...datosCompartidos,
         productoId,
         productoNombre: prodNombre,
@@ -372,12 +586,20 @@ export const SalesView: React.FC = () => {
         costoTotalVendido,
         utilidadEstimada,
       });
+
+      if (!resultadoEdicion.success) {
+        alert(resultadoEdicion.mensaje);
+        return;
+      }
+
+
+
     } else {
       const pedidoId = `pedido-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const folioPedido = `PED-${Date.now().toString().slice(-8)}`;
       console.log('Folio generado:', folioPedido);
       // Guardar el producto principal
-      addVenta(
+      const resultadoVenta = addVenta(
         {
           ...datosCompartidos,
           pedidoId,
@@ -395,6 +617,11 @@ export const SalesView: React.FC = () => {
         },
         descontarStock
       );
+
+      if (!resultadoVenta.success) {
+        alert(resultadoVenta.mensaje);
+        return;
+      }
 
       // Guardar cada producto adicional como otra venta
       productosPedido.forEach((item) => {
@@ -416,7 +643,7 @@ export const SalesView: React.FC = () => {
         const costoItem =
           cantidadItem * presentacionItem.costoUnitarioTotal;
 
-        addVenta(
+        const resultadoAdicional = addVenta(
           {
             ...datosCompartidos,
             pedidoId,
@@ -434,6 +661,13 @@ export const SalesView: React.FC = () => {
           },
           descontarStock
         );
+        
+        if (!resultadoAdicional.success) {
+          alert(
+            `No se pudo registrar ${productoItem.nombre}: ${resultadoAdicional.mensaje}`
+          );
+          return;
+        }
       });
     }
 
@@ -871,11 +1105,15 @@ export const SalesView: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {presentacionesDisponibles.map((pres) => {
                   const isSel = pres.id === presentacionId;
+                  const stockPres = Math.max(0, pres.stockListo || 0);
+                  const agotada = stockPres <= 0;
                   return (
                     <button
+                      disabled={agotada}
                       key={pres.id}
                       type="button"
                       onClick={() => {
+                        if (agotada) return;
                         setPresentacionId(pres.id);
                         setPrecioUnitario(String(pres.precioVentaReal));
                       }}
@@ -885,19 +1123,95 @@ export const SalesView: React.FC = () => {
                           : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                       }`}
                     >
-                      <span className="font-bold text-xs">{pres.nombre}</span>
+                      <span className="font-bold text-xs">
+                        {pres.nombre}{agotada ? ' — AGOTADA' : ''}
+                      </span>
                       <div className="flex items-center justify-between text-[11px] mt-1">
                         <span className="font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
                           {formatMXN(pres.precioVentaReal)}
                         </span>
-                        <span className="text-slate-400">Stock: {pres.stockListo || 0}</span>
+                        <span className={agotada ? 'text-rose-500 font-semibold' : 'text-slate-400'}>
+                          Stock: {stockPres}
+                        </span>
                       </div>
                     </button>
                   );
                 })}
               </div>
             </div>
-          )}
+          )}        
+
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Cantidad *
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0.5"
+                required
+                value={cantidad}
+                onChange={(e) => {
+                  const valor = e.target.value;
+
+                  if (valor === '') {
+                    setCantidad('');
+                    return;
+                  }
+                
+                  const solicitada = Number(valor);
+                  const stock = Math.max(
+                    0,
+                    presentacionSeleccionada?.stockListo || 0
+                  );
+                
+                  if (presentacionSeleccionada && solicitada > stock) {
+                    setCantidad(String(stock));
+                  
+                    alert(
+                      `Solo tienes ${stock} en stock. La cantidad se ajustó a ${stock}.`
+                    );
+                  
+                    return;
+                  }
+                
+                  setCantidad(valor);
+                }}
+                className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Precio Unitario ($ MXN) *
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                value={precioUnitario}
+                onChange={(e) => setPrecioUnitario(e.target.value)}
+                className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Descuento ($ MXN)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={descuento}
+                onChange={(e) => setDescuento(e.target.value)}
+                className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+            </div>
+          </div>
 
           {!editingVenta && (
             <button
@@ -978,35 +1292,58 @@ export const SalesView: React.FC = () => {
                   <label className="block text-xs font-semibold mb-1">
                     Presentación
                   </label>
-                  <select
-                    value={item.presentacionId}
-                    onChange={(e) => {
-                      const nuevaPresentacion = producto?.presentaciones?.find(
-                        (p) => p.id === e.target.value
-                      );
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {producto?.presentaciones?.map((pres) => {
+                      const isSel = pres.id === item.presentacionId;
+                      const stockPres = Math.max(0, pres.stockListo || 0);
+                      const agotada = stockPres <= 0;
                     
-                      setProductosPedido((prev) =>
-                        prev.map((fila, i) =>
-                          i === indice
-                            ? {
-                                ...fila,
-                                presentacionId: e.target.value,
-                                precioUnitario: nuevaPresentacion
-                                  ? String(nuevaPresentacion.precioVentaReal)
-                                  : '',
-                              }
-                            : fila
-                        )
+                      return (
+                        <button
+                          disabled={agotada}
+                          key={pres.id}
+                          type="button"
+                          onClick={() => {
+                            if (agotada) return;
+                          
+                            setProductosPedido((prev) =>
+                              prev.map((fila) =>
+                                fila.id === item.id
+                                  ? {
+                                      ...fila,
+                                      presentacionId: pres.id,
+                                      precioUnitario: String(pres.precioVentaReal),
+                                      cantidad: '1',
+                                    }
+                                  : fila
+                              )
+                            );
+                          }}
+                          className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                            agotada
+                              ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 text-slate-400 dark:text-slate-500 opacity-60 cursor-not-allowed'
+                              : isSel
+                                ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/60 text-slate-900 dark:text-white shadow-xs'
+                                : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <span className="font-bold text-xs">
+                            {pres.nombre}{agotada ? ' — AGOTADA' : ''}
+                          </span>
+                        
+                          <div className="flex items-center justify-between text-[11px] mt-1">
+                            <span className="font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
+                              {formatMXN(pres.precioVentaReal)}
+                            </span>
+                        
+                            <span className={agotada ? 'text-rose-500 font-semibold' : 'text-slate-400'}>
+                              Stock: {stockPres}
+                            </span>
+                          </div>
+                        </button>
                       );
-                    }}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 p-2 text-sm"
-                  >
-                    {producto?.presentaciones?.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nombre}
-                      </option>
-                    ))}
-                  </select>
+                    })}
+                  </div>
                 </div>
                   
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1019,15 +1356,54 @@ export const SalesView: React.FC = () => {
                       min="1"
                       step="1"
                       value={item.cantidad}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const valor = e.target.value;
+
+                        if (valor === '') {
+                          setProductosPedido((prev) =>
+                            prev.map((p) =>
+                              p.id === item.id
+                                ? { ...p, cantidad: '' }
+                                : p
+                            )
+                          );
+                          return;
+                        }
+                      
+                        const solicitada = Number(valor);
+                        const productoItem = productoMap.get(item.productoId);
+                        const presentacionItem = productoItem?.presentaciones?.find(
+                          (p) => p.id === item.presentacionId
+                        );
+                      
+                        const stock = Math.max(
+                          0,
+                          presentacionItem?.stockListo || 0
+                        );
+                      
+                        if (presentacionItem && solicitada > stock) {
+                          setProductosPedido((prev) =>
+                            prev.map((p) =>
+                              p.id === item.id
+                                ? { ...p, cantidad: String(stock) }
+                                : p
+                            )
+                          );
+                        
+                          alert(
+                            `Solo tienes ${stock} en stock de ${presentacionItem.nombre}. La cantidad se ajustó a ${stock}.`
+                          );
+                          return;
+                        }
+                      
                         setProductosPedido((prev) =>
-                          prev.map((fila, i) =>
-                            i === indice
-                              ? { ...fila, cantidad: e.target.value }
-                              : fila
+                          prev.map((p) =>
+                            p.id === item.id
+                              ? { ...p, cantidad: valor }
+                              : p
                           )
-                        )
-                      }
+                        );
+                      }}
                       className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 p-2 text-sm"
                     />
                   </div>
@@ -1089,53 +1465,6 @@ export const SalesView: React.FC = () => {
               </div>
             );
           })}
-
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Cantidad *
-              </label>
-              <input
-                type="number"
-                step="any"
-                min="0.5"
-                required
-                value={cantidad}
-                onChange={(e) => setCantidad(e.target.value)}
-                className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-bold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Precio Unitario ($ MXN) *
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                required
-                value={precioUnitario}
-                onChange={(e) => setPrecioUnitario(e.target.value)}
-                className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-bold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Descuento ($ MXN)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={descuento}
-                onChange={(e) => setDescuento(e.target.value)}
-                className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
-              />
-            </div>
-          </div>
 
           {/* Advertencia de Volumen de Receta */}
           {calculoEnVivo.superaVolumenReceta && calculoEnVivo.recetaBase && (

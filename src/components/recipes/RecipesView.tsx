@@ -58,38 +58,28 @@ export const RecipesView: React.FC = () => {
   // Ingredientes en la receta
   const [ingredientes, setIngredientes] = useState<
     { insumoId: string; cantidad: number }[]
-  >([]);
+  >([]);  
 
-  // Empaques directos en la receta
-  const [empaques, setEmpaques] = useState<
-    { insumoId: string; cantidad: number }[]
-  >([]);
-
-  const [desechables, setDesechables] = useState<
-    { insumoId: string; cantidad: number }[]
-  >([]);
-
-  const [otrosInsumos, setOtrosInsumos] = useState<
-    { insumoId: string; cantidad: number }[]
-  >([]);
+  const [ingredienteSelectorAbierto, setIngredienteSelectorAbierto] =
+  useState<number | null>(null);
 
   // Costos Indirectos
-  const [minutosGas, setMinutosGas] = useState('45');
+  const [minutosGas, setMinutosGas] = useState('0');
   const [costoHoraGas, setCostoHoraGas] = useState(
     String(configuracion.costoHoraGasDefault || 14)
   );
 
-  const [minutosLuz, setMinutosLuz] = useState('20');
+  const [minutosLuz, setMinutosLuz] = useState('0');
   const [costoHoraLuz, setCostoHoraLuz] = useState(
     String(configuracion.costoHoraLuzDefault || 7.5)
   );
 
-  const [minutosManoObra, setMinutosManoObra] = useState('30');
+  const [minutosManoObra, setMinutosManoObra] = useState('0');
   const [costoHoraManoObra, setCostoHoraManoObra] = useState(
     String(configuracion.costoHoraManoObraDefault || 65)
   );
 
-  const [otrosCostosFijos, setOtrosCostosFijos] = useState('5.00');
+  
 
   // Mapeo rápido de insumos
   const insumoMap = useMemo(() => {
@@ -98,18 +88,6 @@ export const RecipesView: React.FC = () => {
 
   const insumosIngredientes = useMemo(() => {
   return insumos.filter((i) => i.tipo === 'ingrediente');
-}, [insumos]);
-
-const insumosEmpaques = useMemo(() => {
-  return insumos.filter((i) => i.tipo === 'empaque');
-}, [insumos]);
-
-const insumosDesechables = useMemo(() => {
-  return insumos.filter((i) => i.tipo === 'desechable');
-}, [insumos]);
-
-const insumosOtros = useMemo(() => {
-  return insumos.filter((i) => i.tipo === 'otro');
 }, [insumos]);
 
   // Cálculos reactivos en vivo para el modal
@@ -121,35 +99,7 @@ const insumosOtros = useMemo(() => {
       const costo = ing.cantidad * costoUnit;
       costoIng += costo;
       return { ...ing, costoCalculado: costo };
-    });
-
-    let costoEmp = 0;
-    const listaEmpCalculados = empaques.map((emp) => {
-      const ins = insumoMap.get(emp.insumoId);
-      const costoUnit = ins ? ins.costoPorUnidadUso : 0;
-      const costo = emp.cantidad * costoUnit;
-      costoEmp += costo;
-      return { ...emp, costoCalculado: costo };
-    });
-
-    
-    let costoDesechables = 0;
-    const listaDesechablesCalculados = desechables.map((item) => {
-      const ins = insumoMap.get(item.insumoId);
-      const costoUnit = ins ? ins.costoPorUnidadUso : 0;
-      const costo = item.cantidad * costoUnit;
-      costoDesechables += costo;
-      return { ...item, costoCalculado: costo };
-    });
-
-    let costoOtrosInsumos = 0;
-    const listaOtrosInsumosCalculados = otrosInsumos.map((item) => {
-      const ins = insumoMap.get(item.insumoId);
-      const costoUnit = ins ? ins.costoPorUnidadUso : 0;
-      const costo = item.cantidad * costoUnit;
-      costoOtrosInsumos += costo;
-      return { ...item, costoCalculado: costo };
-    });
+    });   
 
 
     const mGas = parseFloat(minutosGas) || 0;
@@ -164,35 +114,23 @@ const insumosOtros = useMemo(() => {
     const cHMano = parseFloat(costoHoraManoObra) || 0;
     const cMano = (mMano / 60) * cHMano;
 
-    const cOtros = parseFloat(otrosCostosFijos) || 0;
-
-    const costoInd = cGas + cLuz + cMano + cOtros;
-    const costoTotal = costoIng + costoEmp + costoDesechables + costoOtrosInsumos + costoInd;
+    const costoInd = cGas + cLuz + cMano;
+    const costoTotal = costoIng  + costoInd;
     const rendimiento = parseFloat(rendimientoCantidad) || 1;
     const costoPorUnidad = rendimiento > 0 ? costoTotal / rendimiento : 0;
 
     return {
-      costoIng,
-      costoEmp,
-      costoDesechables,
-      costoOtrosInsumos,
+      costoIng,      
       costoInd,
       costoTotal,
       costoPorUnidad,
       cGas,
       cLuz,
       cMano,
-      cOtros,
       listaIngCalculados,
-      listaEmpCalculados,
-      listaDesechablesCalculados,
-      listaOtrosInsumosCalculados,
     };
   }, [
     ingredientes,
-    empaques,
-    desechables,
-    otrosInsumos,
     insumoMap,
     minutosGas,
     costoHoraGas,
@@ -200,7 +138,6 @@ const insumosOtros = useMemo(() => {
     costoHoraLuz,
     minutosManoObra,
     costoHoraManoObra,
-    otrosCostosFijos,
     rendimientoCantidad,
   ]);
 
@@ -214,16 +151,12 @@ const insumosOtros = useMemo(() => {
     setUnidadMedidaBase('unidades');
     setTiempoElaboracion('60');
     setIngredientes([]);
-    setEmpaques([]);
-    setDesechables([]);
-    setOtrosInsumos([]);
-    setMinutosGas('45');
+    setMinutosGas('0');
     setCostoHoraGas(String(configuracion.costoHoraGasDefault || 14));
-    setMinutosLuz('20');
+    setMinutosLuz('0');
     setCostoHoraLuz(String(configuracion.costoHoraLuzDefault || 7.5));
-    setMinutosManoObra('30');
+    setMinutosManoObra('0');
     setCostoHoraManoObra(String(configuracion.costoHoraManoObraDefault || 65));
-    setOtrosCostosFijos('5.00');
     setIsModalOpen(true);
   };
 
@@ -241,16 +174,12 @@ const insumosOtros = useMemo(() => {
 setUnidadMedidaBase(rec.unidadMedidaBase || 'unidades');
     setTiempoElaboracion(String(rec.tiempoElaboracionMinutos));
     setIngredientes(rec.ingredientes.map((i) => ({ insumoId: i.insumoId, cantidad: i.cantidad })));
-    setEmpaques((rec.empaques || []).map((e) => ({ insumoId: e.insumoId, cantidad: e.cantidad })));
-    setDesechables((rec.desechables || []).map((e) => ({insumoId: e.insumoId,cantidad: e.cantidad})));
-    setOtrosInsumos((rec.otrosInsumos || []).map((e) => ({insumoId: e.insumoId,cantidad: e.cantidad})));
     setMinutosGas(String(rec.indirectos?.minutosGas || 0));
     setCostoHoraGas(String(rec.indirectos?.costoPorHoraGas || configuracion.costoHoraGasDefault));
     setMinutosLuz(String(rec.indirectos?.minutosLuz || 0));
     setCostoHoraLuz(String(rec.indirectos?.costoPorHoraLuz || configuracion.costoHoraLuzDefault));
     setMinutosManoObra(String(rec.indirectos?.minutosManoObra || 0));
     setCostoHoraManoObra(String(rec.indirectos?.costoPorHoraManoObra || configuracion.costoHoraManoObraDefault));
-    setOtrosCostosFijos(String(rec.indirectos?.otrosCostosFijos || 0));
     setIsModalOpen(true);
   };
 
@@ -261,45 +190,8 @@ setUnidadMedidaBase(rec.unidadMedidaBase || 'unidades');
       return;
     }
     setIngredientes((prev) => [...prev, { insumoId: primerInsumo.id, cantidad: 100 }]);
-  };
+  }; 
 
-  const handleAddEmpaqueFila = () => {
-    const primerEmpaque = insumosEmpaques[0] || insumos[0];
-    if (!primerEmpaque) {
-      alert('Debes registrar insumos de empaque en el catálogo primero.');
-      return;
-    }
-    setEmpaques((prev) => [...prev, { insumoId: primerEmpaque.id, cantidad: 1 }]);
-  };
-
-  
-const handleAddDesechableFila = () => {
-  const primer = insumosDesechables[0];
-
-  if (!primer) {
-    alert('Registra al menos un insumo de tipo Desechable en el catálogo.');
-    return;
-  }
-
-  setDesechables((prev) => [
-    ...prev,
-    { insumoId: primer.id, cantidad: 1 },
-  ]);
-};
-
-const handleAddOtroInsumoFila = () => {
-  const primer = insumosOtros[0];
-
-  if (!primer) {
-    alert('Registra al menos un insumo de tipo Otro en el catálogo.');
-    return;
-  }
-
-  setOtrosInsumos((prev) => [
-    ...prev,
-    { insumoId: primer.id, cantidad: 1 },
-  ]);
-};
 
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -325,7 +217,7 @@ const handleAddOtroInsumoFila = () => {
       minutosManoObra: parseFloat(minutosManoObra) || 0,
       costoPorHoraManoObra: parseFloat(costoHoraManoObra) || 0,
       costoManoObra: calculosEnVivo.cMano,
-      otrosCostosFijos: parseFloat(otrosCostosFijos) || 0,
+      otrosCostosFijos: 0,
     };
 
     if (editingReceta) {
@@ -340,14 +232,14 @@ const handleAddOtroInsumoFila = () => {
         unidadMedidaBase,
         tiempoElaboracionMinutos: parseFloat(tiempoElaboracion) || 0,
         ingredientes: calculosEnVivo.listaIngCalculados,
-        empaques: calculosEnVivo.listaEmpCalculados,
-        desechables: calculosEnVivo.listaDesechablesCalculados,
-        otrosInsumos: calculosEnVivo.listaOtrosInsumosCalculados,
-        costoDesechables: calculosEnVivo.costoDesechables,
-        costoOtrosInsumos: calculosEnVivo.costoOtrosInsumos,
+        empaques: [],
+        desechables: [],
+        otrosInsumos: [],
+        costoDesechables: 0,
+        costoOtrosInsumos: 0,
         indirectos: indirectosData,
         costoIngredientes: calculosEnVivo.costoIng,
-        costoEmpaques: calculosEnVivo.costoEmp,
+        costoEmpaques: 0,
         costoIndirectos: calculosEnVivo.costoInd,
         costoTotalReceta: calculosEnVivo.costoTotal,
         costoPorUnidad: calculosEnVivo.costoPorUnidad,
@@ -364,14 +256,14 @@ const handleAddOtroInsumoFila = () => {
         unidadMedidaBase,
         tiempoElaboracionMinutos: parseFloat(tiempoElaboracion) || 0,
         ingredientes: calculosEnVivo.listaIngCalculados,
-        empaques: calculosEnVivo.listaEmpCalculados,
-        desechables: calculosEnVivo.listaDesechablesCalculados,
-        otrosInsumos: calculosEnVivo.listaOtrosInsumosCalculados,
-        costoDesechables: calculosEnVivo.costoDesechables,
-        costoOtrosInsumos: calculosEnVivo.costoOtrosInsumos,
+        empaques: [],
+        desechables: [],
+        otrosInsumos: [],
+        costoDesechables: 0,
+        costoOtrosInsumos: 0,
         indirectos: indirectosData,
         costoIngredientes: calculosEnVivo.costoIng,
-        costoEmpaques: calculosEnVivo.costoEmp,
+        costoEmpaques: 0,
         costoIndirectos: calculosEnVivo.costoInd,
         costoTotalReceta: calculosEnVivo.costoTotal,
         costoPorUnidad: calculosEnVivo.costoPorUnidad,
@@ -465,38 +357,8 @@ const handleAddOtroInsumoFila = () => {
                       Ingredientes ({rec.ingredientes.length}):
                     </span>
                     <span className="font-semibold">{formatMXN(rec.costoIngredientes)}</span>
-                  </div>
-
+                  </div>               
                   
-                  <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-                    <span className="flex items-center gap-1.5">
-                      <Package className="w-3.5 h-3.5 text-blue-500" />
-                      Empaques:
-                    </span>
-                    <span className="font-semibold">
-                      {formatMXN(rec.costoEmpaques)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-                    <span className="flex items-center gap-1.5">
-                      <Package className="w-3.5 h-3.5 text-amber-500" />
-                      Desechables:
-                    </span>
-                    <span className="font-semibold">
-                      {formatMXN(rec.costoDesechables ?? 0)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-                    <span className="flex items-center gap-1.5">
-                      <Package className="w-3.5 h-3.5 text-purple-500" />
-                      Otros insumos:
-                    </span>
-                    <span className="font-semibold">
-                      {formatMXN(rec.costoOtrosInsumos ?? 0)}
-                    </span>
-                  </div>
 
                   <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
                     <span className="flex items-center gap-1.5">
@@ -697,23 +559,113 @@ const handleAddOtroInsumoFila = () => {
                       key={idx}
                       className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs"
                     >
+
+                     {/* Imagen del ingrediente seleccionado */}
+                     <div className="w-12 h-12 shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-center overflow-hidden">
+                       {ins?.imagenUrl ? (
+                         <img
+                           src={ins.imagenUrl}
+                           alt={ins.nombre}
+                           className="w-full h-full object-contain"
+                         />
+                       ) : (
+                         <Package className="w-5 h-5 text-slate-400" />
+                       )}
+                     </div>
+
                       {/* Insumo Selector */}
-                      <select
-                        value={ing.insumoId}
-                        onChange={(e) => {
-                          const newId = e.target.value;
-                          setIngredientes((prev) =>
-                            prev.map((item, i) => (i === idx ? { ...item, insumoId: newId } : item))
-                          );
-                        }}
-                        className="flex-1 min-w-[140px] px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
-                      >
-                        {insumosIngredientes.map((i) => (
-                          <option key={i.id} value={i.id}>
-                            {i.nombre} ({formatCostoUnitario(i.costoPorUnidadUso)}/{i.unidadUso})
-                          </option>
-                        ))}
-                      </select>
+                      
+                      <div className="relative flex-1 min-w-[180px]">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setIngredienteSelectorAbierto(
+                              ingredienteSelectorAbierto === idx ? null : idx
+                            )
+                          }
+                          className="w-full flex items-center gap-2 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-left"
+                        >
+                          {ins?.imagenUrl ? (
+                            <img
+                              src={ins.imagenUrl}
+                              alt={ins.nombre}
+                              className="w-9 h-9 rounded-md object-contain bg-white shrink-0"
+                            />
+                          ) : (
+                            <div className="w-9 h-9 rounded-md bg-slate-200 dark:bg-slate-700 flex items-center justify-center shrink-0">
+                              <Package className="w-4 h-4 text-slate-500" />
+                            </div>
+                          )}
+                      
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                              {ins?.nombre || 'Seleccionar ingrediente'}
+                            </div>
+                            {ins && (
+                              <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                                {formatCostoUnitario(ins.costoPorUnidadUso)}/{ins.unidadUso}
+                              </div>
+                            )}
+                          </div>
+                          
+                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                        </button>
+                          
+                        {ingredienteSelectorAbierto === idx && (
+                          <div className="absolute top-full left-0 mt-1 w-full min-w-[260px] max-h-64 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl z-50">
+                            {insumosIngredientes.map((opcion) => (
+                              <button
+                                key={opcion.id}
+                                type="button"
+                                onClick={() => {
+                                  setIngredientes((prev) =>
+                                    prev.map((item, i) =>
+                                      i === idx
+                                        ? { ...item, insumoId: opcion.id }
+                                        : item
+                                    )
+                                  );
+                                  setIngredienteSelectorAbierto(null);
+                                }}
+                                className={`w-full flex items-center gap-3 p-2 text-left hover:bg-amber-50 dark:hover:bg-slate-800 ${
+                                  opcion.id === ing.insumoId
+                                    ? 'bg-amber-50 dark:bg-slate-800'
+                                    : ''
+                                }`}
+                              >
+                                {opcion.imagenUrl ? (
+                                  <img
+                                    src={opcion.imagenUrl}
+                                    alt={opcion.nombre}
+                                    className="w-10 h-10 rounded-lg object-contain bg-white border border-slate-200 shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                                    <Package className="w-5 h-5 text-slate-400" />
+                                  </div>
+                                )}
+                      
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-xs font-semibold text-slate-900 dark:text-white">
+                                    {opcion.nombre}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                                    {formatCostoUnitario(opcion.costoPorUnidadUso)}
+                                    /{opcion.unidadUso}
+                                  </div>
+                                </div>
+                              
+                                {opcion.id === ing.insumoId && (
+                                  <span className="text-amber-600 text-xs font-bold">
+                                    ✓
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
 
                       {/* Cantidad */}
                       <div className="flex items-center gap-1 w-28 shrink-0">
@@ -759,294 +711,10 @@ const handleAddOtroInsumoFila = () => {
             <div className="text-right text-xs font-bold text-slate-700 dark:text-slate-300">
               Subtotal Ingredientes: {formatMXN(calculosEnVivo.costoIng)}
             </div>
-          </div>
-
-          {/* SECCIÓN 2: EMPAQUES Y MATERIALES DIRECTOS */}
-          <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <Package className="w-4 h-4 text-blue-500" />
-                  2. Empaques / Moldes Desechables de la Tanda
-                </h4>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Bases de cartón, papel encerado, domos o capacillos usados al hornear
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleAddEmpaqueFila}
-                className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
-              >
-                + Añadir Empaque
-              </button>
-            </div>
-
-            {empaques.length > 0 && (
-              <div className="space-y-2">
-                {empaques.map((emp, idx) => {
-                  const ins = insumoMap.get(emp.insumoId);
-                  const costoCalc = ins ? emp.cantidad * ins.costoPorUnidadUso : 0;
-                  return (
-                    <div
-                      key={idx}
-                      className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs"
-                    >
-                      <select
-                        value={emp.insumoId}
-                        onChange={(e) => {
-                          const newId = e.target.value;
-                          setEmpaques((prev) =>
-                            prev.map((item, i) => (i === idx ? { ...item, insumoId: newId } : item))
-                          );
-                        }}
-                        className="flex-1 min-w-[140px] px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
-                      >
-                        {insumosEmpaques.map((i) => (
-                          <option key={i.id} value={i.id}>
-                            {i.nombre} ({formatCostoUnitario(i.costoPorUnidadUso)}/{i.unidadUso})
-                          </option>
-                        ))}
-                      </select>
-
-                      <div className="flex items-center gap-1 w-24 shrink-0">
-                        <input
-                          type="number"
-                          step="any"
-                          min="0.1"
-                          value={emp.cantidad}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
-                            setEmpaques((prev) =>
-                              prev.map((item, i) => (i === idx ? { ...item, cantidad: val } : item))
-                            );
-                          }}
-                          className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold text-right"
-                        />
-                        <span className="text-slate-500 font-medium">pza</span>
-                      </div>
-
-                      <div className="w-24 text-right font-mono font-bold text-slate-800 dark:text-slate-200 shrink-0">
-                        {formatMXN(costoCalc)}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setEmpaques((prev) => prev.filter((_, i) => i !== idx))}
-                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* SECCIÓN 3: DESECHABLES */}
-          <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <Package className="w-4 h-4 text-amber-500" />
-                  3. Desechables
-                </h4>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Vasos, cucharas, servilletas, bolsas y otros materiales desechables
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleAddDesechableFila}
-                className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold"
-              >
-                + Añadir Desechable
-              </button>
-            </div>
-
-            {desechables.length === 0 ? (
-              <p className="text-xs text-slate-400 italic py-2">
-                No has agregado desechables.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {desechables.map((item, idx) => {
-                  const ins = insumoMap.get(item.insumoId);
-                  const costoCalc = ins ? item.cantidad * ins.costoPorUnidadUso : 0;
-                
-                  return (
-                    <div
-                      key={idx}
-                      className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs"
-                    >
-                      <select
-                        value={item.insumoId}
-                        onChange={(e) => {
-                          const newId = e.target.value;
-                          setDesechables((prev) =>
-                            prev.map((fila, i) =>
-                              i === idx ? { ...fila, insumoId: newId } : fila
-                            )
-                          );
-                        }}
-                        className="flex-1 min-w-[140px] px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
-                      >
-                        {insumosDesechables.map((i) => (
-                          <option key={i.id} value={i.id}>
-                            {i.nombre} ({formatCostoUnitario(i.costoPorUnidadUso)}/{i.unidadUso})
-                          </option>
-                        ))}
-                      </select>
-                      
-                      <div className="flex items-center gap-1 w-24 shrink-0">
-                        <input
-                          type="number"
-                          step="any"
-                          min="0"
-                          value={item.cantidad}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
-                            setDesechables((prev) =>
-                              prev.map((fila, i) =>
-                                i === idx ? { ...fila, cantidad: val } : fila
-                              )
-                            );
-                          }}
-                          className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold text-right"
-                        />
-                        <span className="text-slate-500 font-medium">
-                          {ins?.unidadUso || 'pza'}
-                        </span>
-                      </div>
-                        
-                      <div className="w-24 text-right font-mono font-bold text-slate-800 dark:text-slate-200 shrink-0">
-                        {formatMXN(costoCalc)}
-                      </div>
-                        
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setDesechables((prev) => prev.filter((_, i) => i !== idx))
-                        }
-                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="text-right text-xs font-bold text-slate-700 dark:text-slate-300">
-              Subtotal Desechables: {formatMXN(calculosEnVivo.costoDesechables)}
-            </div>
-          </div>
-
-          
-          {/* SECCIÓN 4: OTROS INSUMOS */}
-          <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <Package className="w-4 h-4 text-purple-500" />
-                  4. Otros insumos
-                </h4>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Materiales auxiliares que no corresponden a ingredientes, empaques o desechables
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleAddOtroInsumoFila}
-                className="px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold"
-              >
-                + Añadir insumo
-              </button>
-            </div>
-
-            {otrosInsumos.length === 0 ? (
-              <p className="text-xs text-slate-400 italic py-2">
-                No has agregado otros insumos.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {otrosInsumos.map((item, idx) => {
-                  const ins = insumoMap.get(item.insumoId);
-                  const costoCalc = ins ? item.cantidad * ins.costoPorUnidadUso : 0;
-                
-                  return (
-                    <div
-                      key={idx}
-                      className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs"
-                    >
-                      <select
-                        value={item.insumoId}
-                        onChange={(e) => {
-                          const newId = e.target.value;
-                          setOtrosInsumos((prev) =>
-                            prev.map((fila, i) =>
-                              i === idx ? { ...fila, insumoId: newId } : fila
-                            )
-                          );
-                        }}
-                        className="flex-1 min-w-[140px] px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
-                      >
-                        {insumosOtros.map((i) => (
-                          <option key={i.id} value={i.id}>
-                            {i.nombre} ({formatCostoUnitario(i.costoPorUnidadUso)}/{i.unidadUso})
-                          </option>
-                        ))}
-                      </select>
-                      
-                      <div className="flex items-center gap-1 w-24 shrink-0">
-                        <input
-                          type="number"
-                          step="any"
-                          min="0"
-                          value={item.cantidad}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
-                            setOtrosInsumos((prev) =>
-                              prev.map((fila, i) =>
-                                i === idx ? { ...fila, cantidad: val } : fila
-                              )
-                            );
-                          }}
-                          className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold text-right"
-                        />
-                        <span className="text-slate-500 font-medium">
-                          {ins?.unidadUso || 'pza'}
-                        </span>
-                      </div>
-                        
-                      <div className="w-24 text-right font-mono font-bold text-slate-800 dark:text-slate-200 shrink-0">
-                        {formatMXN(costoCalc)}
-                      </div>
-                        
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setOtrosInsumos((prev) => prev.filter((_, i) => i !== idx))
-                        }
-                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="text-right text-xs font-bold text-slate-700 dark:text-slate-300">
-              Subtotal Otros insumos: {formatMXN(calculosEnVivo.costoOtrosInsumos)}
-            </div>
-          </div>
+          </div>         
 
 
-          {/* SECCIÓN 5: COSTOS INDIRECTOS (GAS, LUZ, MANO DE OBRA) */}
+          {/* SECCIÓN 2: COSTOS INDIRECTOS (GAS, LUZ, MANO DE OBRA) */}
           <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
             <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
               <Flame className="w-4 h-4 text-rose-500" />

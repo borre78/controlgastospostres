@@ -27,6 +27,108 @@ import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 
 
+
+
+const comprimirImagen = (archivo: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    if (!archivo.type.startsWith('image/')) {
+      reject(new Error('Selecciona un archivo de imagen válido.'));
+      return;
+    }
+
+    if (archivo.size > 10 * 1024 * 1024) {
+      reject(new Error('La imagen original no debe superar los 10 MB.'));
+      return;
+    }
+
+    const lector = new FileReader();
+
+    lector.onerror = () => {
+      reject(new Error('No se pudo leer la imagen.'));
+    };
+
+    lector.onload = () => {
+      const imagen = new Image();
+
+      imagen.onerror = () => {
+        reject(new Error('No se pudo procesar la imagen.'));
+      };
+
+      imagen.onload = async () => {
+        const esPNG = archivo.type === 'image/png';
+        const formato = esPNG ? 'image/png' : 'image/jpeg';
+        const limite = 95 * 1024; // Margen de seguridad bajo 100 KB
+
+        // Intentar diferentes resoluciones, de mayor a menor.
+        const resoluciones = [300, 250, 220, 200, 180, 160, 140, 120, 100];
+
+        for (const maximo of resoluciones) {
+          const escala = Math.min(
+            1,
+            maximo / imagen.width,
+            maximo / imagen.height
+          );
+
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(imagen.width * escala));
+          canvas.height = Math.max(1, Math.round(imagen.height * escala));
+
+          const contexto = canvas.getContext('2d');
+
+          if (!contexto) {
+            reject(new Error('No se pudo procesar la imagen.'));
+            return;
+          }
+
+          // Mantener el fondo transparente para los PNG.
+          contexto.clearRect(0, 0, canvas.width, canvas.height);
+          contexto.drawImage(imagen, 0, 0, canvas.width, canvas.height);
+
+          const blob = await new Promise<Blob | null>((resolveBlob) => {
+            canvas.toBlob(
+              resolveBlob,
+              formato,
+              esPNG ? undefined : 0.75
+            );
+          });
+
+          if (!blob) {
+            reject(new Error('No se pudo comprimir la imagen.'));
+            return;
+          }
+
+          if (blob.size <= limite) {
+            const lectorFinal = new FileReader();
+
+            lectorFinal.onerror = () => {
+              reject(new Error('No se pudo preparar la imagen.'));
+            };
+
+            lectorFinal.onload = () => {
+              resolve(String(lectorFinal.result));
+            };
+
+            lectorFinal.readAsDataURL(blob);
+            return;
+          }
+        }
+
+        reject(
+          new Error(
+            'No fue posible reducir la imagen a menos de 100 KB. Selecciona una imagen más sencilla.'
+          )
+        );
+      };
+
+      imagen.src = String(lector.result);
+    };
+
+    lector.readAsDataURL(archivo);
+  });
+};
+
+
+
 export const IngredientsView: React.FC = () => {
   const {
     insumos,
@@ -84,6 +186,9 @@ const insumosPendientesCompraHistorica = insumos.filter(
   const [formStockRequerido, setFormStockRequerido] = useState('0');
   const [formProveedor, setFormProveedor] = useState('');
   const [formNotas, setFormNotas] = useState('');
+
+  const [formImagenUrl, setFormImagenUrl] = useState('');
+  const [procesandoImagen, setProcesandoImagen] = useState(false);
 
   // Modal Reabastecer Rápido
   const [insumoAReabastecer, setInsumoAReabastecer] = useState<Insumo | null>(null);
@@ -153,6 +258,8 @@ const calculoEnVivo = useMemo(() => {
     setFormStockRequerido('0');
     setFormProveedor('');
     setFormNotas('');
+    setFormImagenUrl('');
+    setProcesandoImagen(false);
     setIsModalOpen(true);
     setFormPiezasPorPaquete('1');
   };
@@ -169,6 +276,8 @@ const calculoEnVivo = useMemo(() => {
     setFormStockRequerido(String(ins.stockRequerido ?? 0));
     setFormProveedor(ins.proveedor || '');
     setFormNotas(ins.notas || '');
+    setFormImagenUrl(ins.imagenUrl || '');
+    setProcesandoImagen(false);
     setIsModalOpen(true);
     setFormPiezasPorPaquete(
       String(ins.piezasPorPaquete ?? 1)
@@ -209,6 +318,7 @@ const calculoEnVivo = useMemo(() => {
         stockRequerido: stockReq,
         proveedor: formProveedor.trim() || undefined,
         notas: formNotas.trim() || undefined,
+        imagenUrl: formImagenUrl,
         piezasPorPaquete:
           formUnidadCompra === 'paquete'
             ? Number(formPiezasPorPaquete)
@@ -232,6 +342,7 @@ const calculoEnVivo = useMemo(() => {
         stockRequerido: stockReq,
         proveedor: formProveedor.trim() || undefined,
         notas: formNotas.trim() || undefined,
+        imagenUrl: formImagenUrl,
         piezasPorPaquete:
           formUnidadCompra === 'paquete'
             ? Number(formPiezasPorPaquete)
@@ -681,23 +792,38 @@ const calculoEnVivo = useMemo(() => {
                       className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition select-none"
                     >
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-bold text-slate-900 dark:text-white">
-                            {ins.nombre}
-                          </span>
-                          {ins.esDemostracion ? (
+                        <div className="flex items-center gap-2">
+                          {ins.imagenUrl ? (
+                            <img
+                              src={ins.imagenUrl}
+                              alt={ins.nombre}
+                              loading="lazy"
+                              className="w-10 h-10 object-contain rounded-lg border border-slate-200 dark:border-slate-700 bg-transparent shrink-0"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                              <Package className="w-5 h-5 text-slate-400" />
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-slate-900 dark:text-white">
+                              {ins.nombre}
+                            </span>
+                            {ins.esDemostracion ? (
                             <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 font-bold">
                               Demo
                             </span>
-                          ) : (
+                            ) : (
                             <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-bold">
                               Real
                             </span>
-                          )}
-                        </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
-                          {ins.marca && <span>{ins.marca}</span>}
-                          {ins.proveedor && <span>• {ins.proveedor}</span>}
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                            {ins.marca && <span>{ins.marca}</span>}
+                            {ins.proveedor && <span>• {ins.proveedor}</span>}
+                          </div>
                         </div>
                       </td>
 
@@ -1122,6 +1248,67 @@ const calculoEnVivo = useMemo(() => {
             </div>
           </div>
 
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-3">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Imagen del insumo (opcional)
+            </label>
+
+            <input
+              type="file"
+              accept="image/*"
+              disabled={procesandoImagen}
+              onChange={async (e) => {
+                const archivo = e.target.files?.[0];
+                if (!archivo) return;
+              
+                setProcesandoImagen(true);
+              
+                try {
+                  const imagenComprimida = await comprimirImagen(archivo);
+                  setFormImagenUrl(imagenComprimida);
+                } catch (error) {
+                  alert(
+                    error instanceof Error
+                      ? error.message
+                      : 'No se pudo procesar la imagen.'
+                  );
+                  e.target.value = '';
+                } finally {
+                  setProcesandoImagen(false);
+                }
+              }}
+              className="block w-full text-xs text-slate-600 dark:text-slate-300"
+            />
+
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              La imagen se comprime a 300 × 300 píxeles y hasta 100 KB.
+            </p>
+            
+            {procesandoImagen && (
+              <p className="text-xs text-amber-600">
+                Comprimiendo imagen...
+              </p>
+            )}
+
+            {formImagenUrl && (
+              <div className="flex items-center gap-3">
+                <img
+                  src={formImagenUrl}
+                  alt="Vista previa del insumo"
+                  className="w-24 h-24 object-contain rounded-lg border border-slate-200 dark:border-slate-700 bg-white"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setFormImagenUrl('')}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100"
+                >
+                  Quitar imagen
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
@@ -1132,9 +1319,15 @@ const calculoEnVivo = useMemo(() => {
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition active:scale-95"
+              disabled={procesandoImagen}
+              className="px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white shadow-sm transition active:scale-95"
             >
-              {editingInsumo ? 'Actualizar Insumo' : 'Guardar Insumo'}
+              {procesandoImagen
+                ? 'Procesando imagen...'
+                : editingInsumo
+                  ? 'Actualizar Insumo'
+                  : 'Guardar Insumo'
+              }
             </button>
           </div>
         </form>
