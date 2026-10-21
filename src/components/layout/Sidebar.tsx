@@ -33,7 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
   const { insumos, ventas } = useApp();
 
   // Insumos con bajo stock para alertar al usuario
-  const insumosBajoStock = insumos.filter((i) => i.stockActual <= i.stockMinimo).length;
+  const insumosBajoStock = insumos.filter((i) => i.stockActual < i.stockMinimo).length;
   // Ventas pendientes de cobro
   const ventasPendientes = ventas.filter((v) => v.estadoCobro === 'pendiente').length;
 

@@ -439,7 +439,7 @@ const calculoEnVivo = useMemo(() => {
 
   // Contadores
   const totalInsumos = insumos.length;
-  const insumosBajoStockCount = insumos.filter((i) => i.stockActual <= i.stockMinimo).length;
+  const insumosBajoStockCount = insumos.filter((i) => i.stockActual < i.stockMinimo).length;
 
   const handleRegistrarRevision = () => {
     const confirmar = window.confirm(
@@ -768,7 +768,7 @@ const calculoEnVivo = useMemo(() => {
                 </tr>
               ) : (
                 insumosFiltrados.map((ins) => {
-                  const esStockBajo = ins.stockActual <= ins.stockMinimo;
+                  const esStockBajo = ins.stockActual < ins.stockMinimo;
                   return (
                     <tr
                       key={ins.id}
@@ -874,7 +874,7 @@ const calculoEnVivo = useMemo(() => {
                       </td>
 
                       <td className="px-4 py-3">
-                        {(ins.stockRequerido ?? 0) > 0 ? (
+                        {(ins.stockRequerido ?? 0) >= 0 ? (
                           <span>
                             {ins.stockRequerido} {ins.unidadUso}
                           </span>

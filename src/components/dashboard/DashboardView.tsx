@@ -38,7 +38,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   } = useApp();
 
   // Estados de filtro
-  const [periodo, setPeriodo] = useState<PeriodoFiltro>('mes');
+  const [periodo, setPeriodo] = useState<PeriodoFiltro>('quincena');
   const [fechaInicio, setFechaInicio] = useState<string>(() => {
     const d = new Date();
     d.setDate(1); // Primer día del mes
@@ -61,6 +61,38 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         const diff = d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1); // Lunes
         const lunes = new Date(d.setDate(diff)).toISOString().split('T')[0];
         return fechaVenta >= lunes && fechaVenta <= hoy;
+      }
+
+      if (periodo === 'quincena') {
+        const d = new Date();
+        const anio = d.getFullYear();
+        const mes = d.getMonth();
+
+        const inicio = new Date(
+          anio,
+          mes,
+          d.getDate() <= 15 ? 1 : 16
+        );
+      
+        const fin = new Date(
+          anio,
+          mes,
+          d.getDate() <= 15 ? 15 : new Date(anio, mes + 1, 0).getDate()
+        );
+      
+        const fechaInicio = [
+          inicio.getFullYear(),
+          String(inicio.getMonth() + 1).padStart(2, '0'),
+          String(inicio.getDate()).padStart(2, '0'),
+        ].join('-');
+      
+        const fechaFin = [
+          fin.getFullYear(),
+          String(fin.getMonth() + 1).padStart(2, '0'),
+          String(fin.getDate()).padStart(2, '0'),
+        ].join('-');
+      
+        return fechaVenta >= fechaInicio && fechaVenta <= fechaFin;
       }
 
       if (periodo === 'mes') {
@@ -101,6 +133,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         const diff = d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1);
         const lunes = new Date(d.setDate(diff)).toISOString().split('T')[0];
         return fechaGasto >= lunes && fechaGasto <= hoy;
+      }
+
+     if (periodo === 'quincena') {
+        const d = new Date();
+        const anio = d.getFullYear();
+        const mes = d.getMonth();
+
+        const diaInicio = d.getDate() <= 15 ? 1 : 16;
+        const diaFin =
+          d.getDate() <= 15
+            ? 15
+            : new Date(anio, mes + 1, 0).getDate();
+
+        const fechaInicio = `${anio}-${String(mes + 1).padStart(2, '0')}-${String(diaInicio).padStart(2, '0')}`;
+        const fechaFin = `${anio}-${String(mes + 1).padStart(2, '0')}-${String(diaFin).padStart(2, '0')}`;
+
+        return fechaGasto >= fechaInicio && fechaGasto <= fechaFin;
       }
 
       if (periodo === 'mes') {
@@ -167,7 +216,94 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const saldoFlujoCajaTotal = totalVentasCobradas - totalGastosGlobalEfectivo;
 
   // Alertas de inventario
-  const insumosBajoStock = insumos.filter((i) => i.stockActual <= i.stockMinimo);
+  const insumosBajoStock = insumos.filter((i) => i.stockActual < i.stockMinimo);
+
+  // Obtener Rangos Periodos
+  const obtenerDescripcionPeriodo = () => {
+    const hoy = new Date();
+    const fechaHoy = new Date(
+      hoy.getFullYear(),
+      hoy.getMonth(),
+      hoy.getDate()
+    );
+
+    const formatoFecha = (fecha: Date) =>
+      fecha.toLocaleDateString('es-MX', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+
+    let inicio = new Date(fechaHoy);
+    let fin = new Date(fechaHoy);
+
+    switch (periodo) {
+      case 'hoy':
+        return `Hoy: ${formatoFecha(fechaHoy)}`;
+
+      case 'semana': {
+        const diaSemana = fechaHoy.getDay();
+        const diferenciaLunes = diaSemana === 0 ? -6 : 1 - diaSemana;
+
+        inicio.setDate(fechaHoy.getDate() + diferenciaLunes);
+        fin = new Date(inicio);
+        fin.setDate(inicio.getDate() + 6);
+        break;
+      }
+
+      case 'quincena':
+        if (fechaHoy.getDate() <= 15) {
+          inicio = new Date(
+            fechaHoy.getFullYear(),
+            fechaHoy.getMonth(),
+            1
+          );
+          fin = new Date(
+            fechaHoy.getFullYear(),
+            fechaHoy.getMonth(),
+            15
+          );
+        } else {
+          inicio = new Date(
+            fechaHoy.getFullYear(),
+            fechaHoy.getMonth(),
+            16
+          );
+          fin = new Date(
+            fechaHoy.getFullYear(),
+            fechaHoy.getMonth() + 1,
+            0
+          );
+        }
+        break;
+
+      case 'mes':
+        inicio = new Date(
+          fechaHoy.getFullYear(),
+          fechaHoy.getMonth(),
+          1
+        );
+        fin = new Date(
+          fechaHoy.getFullYear(),
+          fechaHoy.getMonth() + 1,
+          0
+        );
+        break;
+
+      case 'anio':
+        inicio = new Date(fechaHoy.getFullYear(), 0, 1);
+        fin = new Date(fechaHoy.getFullYear(), 11, 31);
+        break;
+
+      case 'todo':
+        return 'Mostrando todos los registros';
+
+      case 'personalizado':
+        return 'Periodo personalizado';
+    }
+
+    return `Del ${formatoFecha(inicio)} al ${formatoFecha(fin)}`;
+  };
 
   return (
     <div className="space-y-6">
@@ -189,6 +325,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               [
                 { id: 'hoy', label: 'Hoy' },
                 { id: 'semana', label: 'Semana' },
+                { id: 'quincena', label: 'Quincena' },
                 { id: 'mes', label: 'Este Mes' },
                 { id: 'anio', label: 'Año' },
                 { id: 'todo', label: 'Todo' },
@@ -207,7 +344,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 {item.label}
               </button>
             ))}
-          </div>
+          </div>          
 
           {/* Selector de Ámbito */}
           <select
@@ -220,7 +357,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             <option value="personal">Solo Gastos Personales</option>
           </select>
         </div>
-      </div>
+      </div>      
 
       {/* Rango de fechas personalizado si está activo */}
       {periodo === 'personalizado' && (
@@ -247,6 +384,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
         </div>
       )}
+
+      <div className="mt-2 text-s text-slate-500 dark:text-slate-400">
+        <span className="font-semibold text-slate-700 dark:text-slate-200">
+          Periodo seleccionado:
+        </span>{' '}
+        {obtenerDescripcionPeriodo()}
+      </div>
 
       {/* Banner Informativo de Demostración vs Datos Reales */}
       {productos.some((p) => p.esDemostracion) && (
@@ -551,7 +695,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 No hay ventas registradas aún. Haz clic en "+ Registrar Venta".
               </div>
             ) : (
-              ventas.slice(0, 5).map((v) => (
+              [...ventas].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()).slice(0, 5).map((v) => (
                 <div key={v.id} className="py-2.5 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white truncate">
@@ -604,7 +748,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 No hay gastos registrados aún. Haz clic en "+ Registrar Gasto".
               </div>
             ) : (
-              gastos.slice(0, 5).map((g) => (
+             [...gastos].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()).slice(0, 5).map((g) => (
                 <div key={g.id} className="py-2.5 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white truncate">

@@ -32,7 +32,7 @@ export const ExpensesView: React.FC = () => {
   
 
   const [filtroPeriodo, setFiltroPeriodo] = useState<
-    'todos' | 'hoy' | 'semana' | 'mes' | 'anio' | 'personalizado'
+    'todos' | 'hoy' | 'semana' | 'quincena' | 'mes' | 'anio' | 'personalizado'
   >('todos');
 
   const [fechaInicio, setFechaInicio] = useState('');
@@ -145,6 +145,31 @@ export const ExpensesView: React.FC = () => {
       String(inicioSemana.getDate()).padStart(2, '0'),
     ].join('-');
 
+    const diaActual = fechaHoy.getDate();
+
+    const diaInicioQuincena = diaActual <= 15 ? 1 : 16;
+
+    const diaFinQuincena =
+      diaActual <= 15
+        ? 15
+        : new Date(
+            fechaHoy.getFullYear(),
+            fechaHoy.getMonth() + 1,
+            0
+          ).getDate();
+        
+    const fechaInicioQuincena = [
+      fechaHoy.getFullYear(),
+      String(fechaHoy.getMonth() + 1).padStart(2, '0'),
+      String(diaInicioQuincena).padStart(2, '0'),
+    ].join('-');
+
+    const fechaFinQuincena = [
+      fechaHoy.getFullYear(),
+      String(fechaHoy.getMonth() + 1).padStart(2, '0'),
+      String(diaFinQuincena).padStart(2, '0'),
+    ].join('-');
+
     const inicioMes = `${hoy.slice(0, 7)}-01`;
     const inicioAnio = `${hoy.slice(0, 4)}-01-01`;
 
@@ -183,6 +208,13 @@ export const ExpensesView: React.FC = () => {
 
         case 'semana':
           if (g.fecha < fechaInicioSemana || g.fecha > hoy) return false;
+          break;
+
+        case 'quincena':
+          if (
+            g.fecha < fechaInicioQuincena ||
+            g.fecha > fechaFinQuincena
+          ) return false;
           break;
 
         case 'mes':
@@ -367,6 +399,7 @@ export const ExpensesView: React.FC = () => {
               <option value="todos">Todos los periodos</option>
               <option value="hoy">Hoy</option>
               <option value="semana">Esta semana</option>
+              <option value="quincena">Esta Quincena</option>
               <option value="mes">Este mes</option>
               <option value="anio">Este año</option>
               <option value="personalizado">Periodo personalizado</option>

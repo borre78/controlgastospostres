@@ -40,6 +40,12 @@ export const SalesView: React.FC = () => {
   const [filtroProducto, setFiltroProducto] = useState<string>('todos');
 
   const [filtroFormaPago, setFiltroFormaPago] = useState<'todas' | FormaPago>('todas');
+  const [filtroPeriodo, setFiltroPeriodo] = useState<
+    'hoy' | 'semana' | 'quincena' | 'mes' | 'todo' | 'personalizado'
+  >('todo');
+
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
 
   // Modal Crear / Editar
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -676,37 +682,181 @@ export const SalesView: React.FC = () => {
   };
 
 
-  // Filtrado reactivo
-  const ventasFiltradas = useMemo(() => {
-    return ventas.filter((v) => {
-      if (busqueda.trim()) {
-        const q = busqueda.toLowerCase();
-        const coincide =
-          v.productoNombre.toLowerCase().includes(q) ||
-          (v.presentacionNombre && v.presentacionNombre.toLowerCase().includes(q)) ||
-          (v.cliente && v.cliente.toLowerCase().includes(q)) ||
-          (v.notas && v.notas.toLowerCase().includes(q));
-        if (!coincide) return false;
+  // oBTENR DESCRIPCION 
+  const obtenerDescripcionPeriodo = () => {
+    const hoy = new Date(`${getFechaHoy()}T12:00:00`);
+
+    const formatoFecha = (fecha: Date) =>
+      fecha.toLocaleDateString('es-MX', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+
+    const fechaHoy = getFechaHoy();
+
+    let inicio: Date;
+    let fin: Date;
+
+    switch (filtroPeriodo) {
+      case 'hoy':
+        return `Día seleccionado: ${hoy.toLocaleDateString('es-MX', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        })}`;
+
+      case 'semana': {
+        inicio = new Date(hoy);
+        const diaSemana = (hoy.getDay() + 6) % 7;
+        inicio.setDate(hoy.getDate() - diaSemana);
+        fin = new Date(hoy);
+        break;
       }
 
-      if (filtroEstado !== 'todas' && v.estadoCobro !== filtroEstado) {
-        return false;
-      }
+      case 'quincena':
+        inicio = new Date(
+          hoy.getFullYear(),
+          hoy.getMonth(),
+          hoy.getDate() <= 15 ? 1 : 16
+        );
+        fin = new Date(
+          hoy.getFullYear(),
+          hoy.getMonth(),
+          hoy.getDate() <= 15
+            ? 15
+            : new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate()
+        );
+        break;
 
-      if (filtroProducto !== 'todos' && v.productoId !== filtroProducto) {
-        return false;
-      }
+      case 'mes':
+        inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+        fin = new Date(hoy);
+        break;
 
-      if (
-        filtroFormaPago !== 'todas' &&
-        v.formaPago !== filtroFormaPago
-      ) {
-        return false;
-      }
+      case 'personalizado':
+        if (!fechaInicio && !fechaFin) {
+          return 'Selecciona la fecha inicial y final para consultar las ventas.';
+        }
 
-      return true;
-    });
-  }, [ventas, busqueda, filtroEstado, filtroProducto, filtroFormaPago]);
+        return `Periodo personalizado: ${
+          fechaInicio
+            ? formatoFecha(new Date(`${fechaInicio}T12:00:00`))
+            : 'Sin fecha inicial'
+        } al ${
+          fechaFin
+            ? formatoFecha(new Date(`${fechaFin}T12:00:00`))
+            : 'Sin fecha final'
+        }`;
+
+      case 'todo':
+      default:
+        return 'Mostrando ventas de todas las fechas.';
+    }
+
+    return `Del ${formatoFecha(inicio)} al ${formatoFecha(fin)}`;
+  };
+
+
+
+  
+    // Filtrado reactivo
+    const ventasFiltradas = useMemo(() => {
+      const hoy = getFechaHoy();
+      const fechaHoy = new Date(`${hoy}T12:00:00`);
+
+      const diaSemana = (fechaHoy.getDay() + 6) % 7;
+      const inicioSemana = new Date(fechaHoy);
+      inicioSemana.setDate(fechaHoy.getDate() - diaSemana);
+
+      const formatoFecha = (fecha: Date) =>
+        [
+          fecha.getFullYear(),
+          String(fecha.getMonth() + 1).padStart(2, '0'),
+          String(fecha.getDate()).padStart(2, '0'),
+        ].join('-');
+
+      const fechaInicioSemana = formatoFecha(inicioSemana);
+      const inicioMes = `${hoy.slice(0, 7)}-01`;
+
+      const dia = fechaHoy.getDate();
+      const inicioQuincena = formatoFecha(
+        new Date(
+          fechaHoy.getFullYear(),
+          fechaHoy.getMonth(),
+          dia <= 15 ? 1 : 16
+        )
+      );
+
+      const finQuincena = formatoFecha(
+        new Date(
+          fechaHoy.getFullYear(),
+          fechaHoy.getMonth(),
+          dia <= 15 ? 15 : new Date(
+            fechaHoy.getFullYear(),
+            fechaHoy.getMonth() + 1,
+            0
+          ).getDate()
+        )
+      );
+
+      return ventas.filter((v) => {
+        if (busqueda.trim()) {
+          const q = busqueda.toLowerCase();
+          const coincide =
+            v.productoNombre.toLowerCase().includes(q) ||
+            (v.presentacionNombre && v.presentacionNombre.toLowerCase().includes(q)) ||
+            (v.cliente && v.cliente.toLowerCase().includes(q)) ||
+            (v.notas && v.notas.toLowerCase().includes(q));
+
+          if (!coincide) return false;
+        }
+
+        if (filtroEstado !== 'todas' && v.estadoCobro !== filtroEstado) {
+          return false;
+        }
+
+        if (filtroProducto !== 'todos' && v.productoId !== filtroProducto) {
+          return false;
+        }
+
+        if (filtroFormaPago !== 'todas' && v.formaPago !== filtroFormaPago) {
+          return false;
+        }
+
+        switch (filtroPeriodo) {
+          case 'hoy':
+            if (v.fecha !== hoy) return false;
+            break;
+
+          case 'semana':
+            if (v.fecha < fechaInicioSemana || v.fecha > hoy) return false;
+            break;
+
+          case 'quincena':
+            if (v.fecha < inicioQuincena || v.fecha > finQuincena) return false;
+            break;
+
+          case 'mes':
+            if (v.fecha < inicioMes || v.fecha > hoy) return false;
+            break;
+
+          case 'personalizado':
+            if (fechaInicio && v.fecha < fechaInicio) return false;
+            if (fechaFin && v.fecha > fechaFin) return false;
+            break;
+
+          case 'todo':
+          default:
+            break;
+        }
+
+        return true;
+      });
+    }, [ventas,busqueda,filtroEstado,filtroProducto,filtroFormaPago,filtroPeriodo,fechaInicio,fechaFin,]
+  );
+
 
   // Calcular totales de pedidos con varios productos
   const obtenerTotalPedido = (venta: Venta) => {
@@ -833,17 +983,18 @@ export const SalesView: React.FC = () => {
       </div>
 
       {/* Filtros */}
+      <div className="relative flex-1 w-full">
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          type="text"
+          placeholder="Buscar por postre, presentación, cliente o nota..."
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+        />
+      </div>
       <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center gap-2.5">
-        <div className="relative flex-1 w-full">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar por postre, presentación, cliente o nota..."
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
-          />
-        </div>
+        
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <select
@@ -886,7 +1037,71 @@ export const SalesView: React.FC = () => {
 
           
         </div>
+        
+        <div className="flex flex-wrap items-center gap-2 w-full">
+          {(
+            [
+              { id: 'hoy', label: 'Hoy' },
+              { id: 'semana', label: 'Semana' },
+              { id: 'quincena', label: 'Quincena' },
+              { id: 'mes', label: 'Mes' },
+              { id: 'todo', label: 'Todos' },
+              { id: 'personalizado', label: 'Fechas' },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setFiltroPeriodo(item.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                filtroPeriodo === item.id
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        
+        {filtroPeriodo === 'personalizado' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
+            <div>
+              <label className="block text-xs font-medium mb-1 text-slate-600 dark:text-slate-300">
+                Desde
+              </label>
+              <input
+                type="date"
+                value={fechaInicio}
+                max={fechaFin || undefined}
+                onChange={(e) => setFechaInicio(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+            </div>
+        
+            <div>
+              <label className="block text-xs font-medium mb-1 text-slate-600 dark:text-slate-300">
+                Hasta
+              </label>
+              <input
+                type="date"
+                value={fechaFin}
+                min={fechaInicio || undefined}
+                max={getFechaHoy()}
+                onChange={(e) => setFechaFin(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+            </div>
+          </div>
+        )}
+
       </div>
+
+      <p className="w-full text-s text-slate-500 dark:text-slate-400 mt-1">
+        <span className="font-semibold text-slate-700 dark:text-slate-200">
+          {obtenerDescripcionPeriodo()}
+        </span>
+      </p>
 
       {/* Tabla de Ventas */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">

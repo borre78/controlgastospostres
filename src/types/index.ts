@@ -238,7 +238,7 @@ export interface ConfiguracionApp {
   fechaUltimaRevisionStock?: string;
 }
 
-export type PeriodoFiltro = 'hoy' | 'semana' | 'mes' | 'anio' | 'todo' | 'personalizado';
+export type PeriodoFiltro = 'hoy' | 'semana' | 'quincena' | 'mes' | 'anio' | 'todo' | 'personalizado';
 
 export interface FiltroRangoFechas {
   tipo: PeriodoFiltro;

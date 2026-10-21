@@ -26,7 +26,7 @@ import { PeriodoFiltro } from '../../types';
 export const ReportsView: React.FC = () => {
   const { ventas, gastos, productos, insumos, recetas, categorias } = useApp();
 
-  const [periodo, setPeriodo] = useState<PeriodoFiltro>('mes');
+  const [periodo, setPeriodo] = useState<PeriodoFiltro>('quincena');
   const [fechaInicio, setFechaInicio] = useState<string>(() => {
     const d = new Date();
     d.setDate(1);
@@ -46,6 +46,31 @@ export const ReportsView: React.FC = () => {
         const diff = d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1);
         const lunes = new Date(d.setDate(diff)).toISOString().split('T')[0];
         return f >= lunes && f <= hoy;
+      }
+      if (periodo === 'quincena') {
+       const d = new Date();
+       const anio = d.getFullYear();
+       const mes = d.getMonth();
+            
+       const diaInicio = d.getDate() <= 15 ? 1 : 16;
+       const diaFin =
+         d.getDate() <= 15
+           ? 15
+           : new Date(anio, mes + 1, 0).getDate();
+            
+       const inicio = [
+         anio,
+         String(mes + 1).padStart(2, '0'),
+         String(diaInicio).padStart(2, '0'),
+       ].join('-');
+     
+       const fin = [
+         anio,
+         String(mes + 1).padStart(2, '0'),
+         String(diaFin).padStart(2, '0'),
+       ].join('-');
+     
+       return f >= inicio && f <= fin;
       }
       if (periodo === 'mes') {
         const d = new Date();
@@ -74,6 +99,22 @@ export const ReportsView: React.FC = () => {
         const diff = d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1);
         const lunes = new Date(d.setDate(diff)).toISOString().split('T')[0];
         return f >= lunes && f <= hoy;
+      }
+      if (periodo === 'quincena') {
+        const d = new Date();
+        const anio = d.getFullYear();
+        const mes = d.getMonth();
+
+        const diaInicio = d.getDate() <= 15 ? 1 : 16;
+        const diaFin =
+          d.getDate() <= 15
+            ? 15
+            : new Date(anio, mes + 1, 0).getDate();
+
+        const inicio = `${anio}-${String(mes + 1).padStart(2, '0')}-${String(diaInicio).padStart(2, '0')}`;
+        const fin = `${anio}-${String(mes + 1).padStart(2, '0')}-${String(diaFin).padStart(2, '0')}`;
+
+        return f >= inicio && f <= fin;
       }
       if (periodo === 'mes') {
         const d = new Date();
@@ -173,6 +214,27 @@ const comparacionGastos = useMemo(() => {
 
     finAnterior = new Date(finActual);
     finAnterior.setDate(finAnterior.getDate() - 7);
+  } else if (periodo === 'quincena') {
+    const anio = hoy.getFullYear();
+    const mes = hoy.getMonth();
+    const dia = hoy.getDate();
+
+    // Inicio y fin de la quincena actual
+    if (dia <= 15) {
+      inicioActual = new Date(anio, mes, 1);
+      finActual = new Date(anio, mes, 15);
+
+      // Quincena anterior: segunda mitad del mes pasado
+      inicioAnterior = new Date(anio, mes - 1, 16);
+      finAnterior = new Date(anio, mes, 0);
+    } else {
+      inicioActual = new Date(anio, mes, 16);
+      finActual = new Date(anio, mes + 1, 0);
+
+      // Quincena anterior: primera mitad del mes actual
+      inicioAnterior = new Date(anio, mes, 1);
+      finAnterior = new Date(anio, mes, 15);
+    }
   } else if (periodo === 'mes') {
     inicioActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
     finActual = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
@@ -454,6 +516,70 @@ const comparacionGastos = useMemo(() => {
     exportarACSV(`catalogo_insumos_${getFechaHoy()}`, headers, filas);
   };
 
+  // Obteenr Dias Periodo
+  const obtenerDescripcionPeriodo = () => {
+    const hoy = new Date();
+    hoy.setHours(12, 0, 0, 0);
+
+    const formatoFecha = (fecha: Date) =>
+      fecha.toLocaleDateString('es-MX', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+
+    let inicio = new Date(hoy);
+    let fin = new Date(hoy);
+
+    switch (periodo) {
+      case 'hoy':
+        return `Hoy es ${hoy.toLocaleDateString('es-MX', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        })}`;
+
+      case 'semana': {
+        const diaSemana = (hoy.getDay() + 6) % 7;
+
+        inicio.setDate(hoy.getDate() - diaSemana);
+        fin = new Date(inicio);
+        fin.setDate(inicio.getDate() + 6);
+        break;
+      }
+
+      case 'quincena':
+        if (hoy.getDate() <= 15) {
+          inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+          fin = new Date(hoy.getFullYear(), hoy.getMonth(), 15);
+        } else {
+          inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 16);
+          fin = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+        }
+        break;
+
+      case 'mes':
+        inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+        fin = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+        break;
+
+      case 'anio':
+        inicio = new Date(hoy.getFullYear(), 0, 1);
+        fin = new Date(hoy.getFullYear(), 11, 31);
+        break;
+
+      case 'todo':
+        return 'Mostrando todos los registros';
+
+      case 'personalizado':
+        return 'Consulta del periodo de fechas personalizado';
+    }
+
+    return `Del ${formatoFecha(inicio)} al ${formatoFecha(fin)}`;
+  };
+
+
   return (
     <div className="space-y-6">
       {/* Header y Filtro de Periodo */}
@@ -474,6 +600,7 @@ const comparacionGastos = useMemo(() => {
             [
               { id: 'hoy', label: 'Hoy' },
               { id: 'semana', label: 'Semana' },
+              { id: 'quincena', label: 'Quincena' },
               { id: 'mes', label: 'Mes' },
               { id: 'anio', label: 'Año' },
               { id: 'todo', label: 'Todo' },
@@ -515,6 +642,13 @@ const comparacionGastos = useMemo(() => {
           />
         </div>
       )}
+
+
+      <p className="mt-2 text-s text-slate-500 dark:text-slate-400">
+        <span className="font-semibold text-slate-700 dark:text-slate-200">
+          {obtenerDescripcionPeriodo()}
+        </span>
+      </p>
 
       
       {/* COMPARACIÓN DE GASTOS */}

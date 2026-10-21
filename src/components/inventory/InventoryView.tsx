@@ -162,7 +162,7 @@ export const InventoryView: React.FC = () => {
     });
   }, [insumos, filtroTipo]);
 
-  const totalBajoStock = insumos.filter((i) => i.stockActual <= i.stockMinimo).length;
+  const totalBajoStock = insumos.filter((i) => i.stockActual < i.stockMinimo).length;
 
   return (
     <div className="space-y-5">
@@ -277,7 +277,7 @@ export const InventoryView: React.FC = () => {
                 </tr>
               ) : (
                 insumosFiltrados.map((ins) => {
-                  const esBajo = ins.stockActual <= ins.stockMinimo;
+                  const esBajo = ins.stockActual < ins.stockMinimo;
                   const valor = ins.stockActual * ins.costoPorUnidadUso;
                   return (
                     <tr
