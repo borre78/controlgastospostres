@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sun, Moon, Database, Sparkles, ChefHat,ChevronDown, LogOut,UserRound  } from 'lucide-react';
+import { Sun, Moon, Cloud, Sparkles, ChefHat,ChevronDown, LogOut,UserRound  } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { useApp } from '../../context/AppContext';
 import { PWAInstallButton } from '../common/PWAInstallButton';
@@ -81,10 +81,10 @@ const nombreUsuario =
           <button
             onClick={() => setActiveTab('settings')}
             className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700/80 transition"
-            title="Almacenamiento Local Offline Seguro (Preparado para Cloud DB)"
+            title="Los datos del negocio se sincronizan con Firebase"
           >
-            <Database className="w-3.5 h-3.5 text-emerald-500" />
-            <span className="hidden lg:inline">Almacenamiento Local</span>
+            <Cloud className="w-3.5 h-3.5 text-blue-500" />
+            <span className="hidden lg:inline">Firebase</span>
           </button>
 
           {/* Botón de Cargar Ejemplo si está vacío */}

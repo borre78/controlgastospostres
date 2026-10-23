@@ -9,6 +9,8 @@ import {
   CategoriaGasto,
   ConfiguracionApp,
   RegistroProduccion,
+  Cliente,
+  Pedido,
 } from '../types';
 import { CATEGORIAS_DEFAULT, CONFIGURACION_DEFAULT } from '../data/defaultData';
 import {
@@ -19,6 +21,7 @@ import {
   SAMPLE_VENTAS,
 } from '../data/sampleBakeryData';
 import { calcularPrecioRecomendado } from '../utils/formatters';
+import { normalizarFoliosPedidos, obtenerSiguienteFolioPedido } from '../utils/orderNumbering';
 
 import { auth } from '../firebase';
 import {
@@ -40,17 +43,28 @@ const obtenerUsuarioAutorizado = async () => {
   return usuario;
 }
 
+const leerListaLocal = <T,>(clave: string): T[] => {
+  try {
+    const valor = localStorage.getItem(clave);
+    const datos = valor ? JSON.parse(valor) : [];
+    return Array.isArray(datos) ? datos as T[] : [];
+  } catch { return []; }
+};
+
 interface AppContextType {
   // Estado
   insumos: Insumo[];
   recetas: Receta[];
   productos: ProductoVenta[];
   ventas: Venta[];
+  clientes: Cliente[];
+  pedidos: Pedido[];
   gastos: Gasto[];
   categorias: CategoriaGasto[];
   producciones: RegistroProduccion[];
   configuracion: ConfiguracionApp;
   isLoaded: boolean;
+  loadError: string | null;
   temaActual: 'light' | 'dark';
 
   // Insumos
@@ -92,6 +106,13 @@ interface AppContextType {
   updateVenta: (id: string, cambios: Partial<Venta>) => {success: boolean; mensaje: string;};
   deleteVenta: (id: string) => void;
   marcarVentaCobrada: (id: string, formaPago: Gasto['formaPago']) => void;
+  addCliente: (cliente: Omit<Cliente, 'id'>) => Cliente;
+  updateCliente: (id: string, cambios: Partial<Cliente>) => void;
+  deleteCliente: (id: string) => boolean;
+  addPedido: (pedido: Omit<Pedido, 'id' | 'folio'>) => void;
+  generarSiguienteFolioPedido: () => string;
+  updatePedido: (id: string, cambios: Partial<Pedido>) => void;
+  deletePedido: (id: string) => boolean;
 
   // Gastos
   addGasto: (gasto: Omit<Gasto, 'id'>) => void;
@@ -145,16 +166,24 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isLoaded, setIsLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Estados principales
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   const [recetas, setRecetas] = useState<Receta[]>([]);
   const [productos, setProductos] = useState<ProductoVenta[]>([]);
   const [ventas, setVentas] = useState<Venta[]>([]);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [gastos, setGastos] = useState<Gasto[]>([]);
   const [categorias, setCategorias] = useState<CategoriaGasto[]>([]);
   const [producciones, setProducciones] = useState<RegistroProduccion[]>([]);
-  const [configuracion, setConfiguracion] = useState<ConfiguracionApp>(CONFIGURACION_DEFAULT);
+  const [configuracion, setConfiguracion] = useState<ConfiguracionApp>(() => {
+    const temaGuardado = localStorage.getItem('preferenciaTema');
+    return temaGuardado === 'dark' || temaGuardado === 'light' || temaGuardado === 'system'
+      ? { ...CONFIGURACION_DEFAULT, tema: temaGuardado }
+      : CONFIGURACION_DEFAULT;
+  });
   const [temaActual, setTemaActual] = useState<'light' | 'dark'>('light');
 
 
@@ -191,6 +220,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           obtenerDocumento('configuracion', 'general'),
         ]);
 
+        // Estas colecciones se añadieron después del esquema original. Sus reglas
+        // pueden no estar desplegadas todavía; su ausencia no debe bloquear ventas.
+        const [clientesNube, pedidosNube] = await Promise.all([
+          listarDocumentos('clientes').catch((error) => {
+            console.warn('No se pudo leer el catálogo de clientes; se reconstruirá desde ventas:', error);
+            return leerListaLocal<Cliente>('clientesLocal');
+          }),
+          listarDocumentos('pedidos').catch((error) => {
+            console.warn('No se pudo leer el historial de pedidos; se reconstruirá desde ventas:', error);
+            return leerListaLocal<Pedido>('pedidosLocal');
+          }),
+        ]);
+
         if (cancelado) return;
 
         // Sustituir siempre las listas, incluso si Firebase devuelve [].
@@ -198,49 +240,101 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setRecetas(recetasNube as unknown as Receta[]);
         setProductos(productosNube as unknown as ProductoVenta[]);
         const ventasCargadas = ventasNube as unknown as Venta[];
+        const clientesExistentes = clientesNube as unknown as Cliente[];
+        const pedidosExistentes = pedidosNube as unknown as Pedido[];
+        const clientesPorNombre = new Map(clientesExistentes.map((c) => [c.nombre.trim().toLocaleLowerCase(), c]));
+        const hashId = (valor: string) => {
+          let hash = 2166136261;
+          for (let i = 0; i < valor.length; i++) hash = Math.imul(hash ^ valor.charCodeAt(i), 16777619);
+          return (hash >>> 0).toString(36);
+        };
+        const foliosIniciales = normalizarFoliosPedidos(ventasCargadas, pedidosExistentes);
+        const ventasActualizadas = foliosIniciales.ventas;
+        setVentas(ventasActualizadas);
 
-const pedidosConFolio = new Map<string, string>();
-let siguienteFolio = 1;
+        const clientesGenerados = new Map<string, Cliente>();
+        for (const venta of ventasActualizadas) {
+          const nombreCliente = venta.cliente?.trim();
+          if (!nombreCliente) continue;
+          const clave = nombreCliente.toLocaleLowerCase();
+          if (clientesPorNombre.has(clave)) continue;
+          if (!clientesGenerados.has(clave)) clientesGenerados.set(clave, {
+            id: `cli-hist-${hashId(clave)}`, nombre: nombreCliente,
+            telefono: venta.telefonoCliente || undefined,
+          });
+        }
+        const clientesCargados = [...clientesExistentes, ...clientesGenerados.values()];
+        const clienteIdPorNombre = new Map(clientesCargados.map((c) => [c.nombre.trim().toLocaleLowerCase(), c.id]));
 
-const ventasActualizadas = ventasCargadas.map((venta) => {
-  // Si ya tiene folio, lo conservamos.
-  if (venta.folioPedido) {
-    if (venta.pedidoId) {
-      pedidosConFolio.set(venta.pedidoId, venta.folioPedido);
-    }
-    return venta;
-  }
-
-  // Las ventas del mismo pedido compartirán el mismo folio.
-  if (venta.pedidoId) {
-    let folio = pedidosConFolio.get(venta.pedidoId);
-
-    if (!folio) {
-      folio = `PED-${String(siguienteFolio++).padStart(6, '0')}`;
-      pedidosConFolio.set(venta.pedidoId, folio);
-    }
-
-    return { ...venta, folioPedido: folio };
-  }
-
-  // Para ventas antiguas sin pedidoId, asignamos un folio individual.
-  return {
-    ...venta,
-    folioPedido: `PED-${String(siguienteFolio++).padStart(6, '0')}`,
-  };
-});
-setVentas(ventasActualizadas);
+        const gruposVentas = new Map<string, Venta[]>();
+        for (const venta of ventasActualizadas) {
+          const clave = venta.pedidoId || venta.folioPedido || `venta-${venta.id}`;
+          gruposVentas.set(clave, [...(gruposVentas.get(clave) || []), venta]);
+        }
+        const idsPedidoExistentes = new Set(pedidosExistentes.map((p) => p.id));
+        const foliosPedidoExistentes = new Set(pedidosExistentes.map((p) => p.folio).filter(Boolean));
+        const pedidosHistoricos: Pedido[] = [];
+        for (const [clave, renglones] of gruposVentas) {
+          const id = clave.startsWith('pedido-hist-') ? clave : `pedido-hist-${hashId(clave)}`;
+          if (idsPedidoExistentes.has(id) || idsPedidoExistentes.has(clave) || renglones.some((v) => v.folioPedido && foliosPedidoExistentes.has(v.folioPedido))) continue;
+          const primera = renglones[0];
+          const nombreCliente = primera.cliente?.trim() || 'Cliente sin nombre';
+          const clienteHistorico = primera.cliente
+            ? clientesCargados.find((c) => c.id === clienteIdPorNombre.get(nombreCliente.toLocaleLowerCase()))
+            : undefined;
+          pedidosHistoricos.push({
+            id, folio: primera.folioPedido || `HIST-${hashId(clave).toUpperCase()}`,
+            fecha: primera.fecha, clienteId: primera.cliente ? clienteIdPorNombre.get(nombreCliente.toLocaleLowerCase()) : undefined,
+            clienteNombre: nombreCliente, telefonoCliente: primera.telefonoCliente || clienteHistorico?.telefono,
+            correoCliente: clienteHistorico?.correo,
+            items: renglones.map((v) => ({ id: v.id, productoId: v.productoId, productoNombre: v.productoNombre,
+              presentacionId: v.presentacionId || '', presentacionNombre: v.presentacionNombre || v.productoNombre,
+              cantidad: v.cantidad, precioUnitario: v.precioUnitario })),
+            estado: 'completado', notas: 'Importado automáticamente del historial de ventas.',
+          });
+        }
+        const pedidosCompletos = [...foliosIniciales.pedidos, ...pedidosHistoricos];
+        const datosNormalizados = normalizarFoliosPedidos(ventasActualizadas, pedidosCompletos);
+        setVentas(datosNormalizados.ventas);
+        setClientes(clientesCargados);
+        setPedidos(datosNormalizados.pedidos);
+        localStorage.setItem('clientesLocal', JSON.stringify(clientesCargados));
+        localStorage.setItem('pedidosLocal', JSON.stringify(datosNormalizados.pedidos));
+        localStorage.setItem('ventasLocal', JSON.stringify(datosNormalizados.ventas));
+        // Crear solo los documentos históricos que faltan. Las ventas originales no se modifican.
+        for (const cliente of clientesGenerados.values()) {
+          try { await guardarDocumento('clientes', cliente.id, cliente); }
+          catch (error) { console.error('No se pudo guardar cliente histórico:', error); }
+        }
+        for (const pedido of pedidosHistoricos) {
+          try { await guardarDocumento('pedidos', pedido.id, pedido); }
+          catch (error) { console.error('No se pudo guardar pedido histórico:', error); }
+        }
+        for (const venta of datosNormalizados.ventas) {
+          const original = ventasCargadas.find((v) => v.id === venta.id);
+          if (JSON.stringify(original) === JSON.stringify(venta)) continue;
+          try { await guardarDocumento('ventas', venta.id, venta); }
+          catch (error) { console.error('No se pudo actualizar folio de venta:', error); }
+        }
+        for (const pedido of datosNormalizados.pedidos) {
+          const original = pedidosExistentes.find((p) => p.id === pedido.id);
+          if (!original || JSON.stringify(original) === JSON.stringify(pedido)) continue;
+          try { await guardarDocumento('pedidos', pedido.id, pedido); }
+          catch (error) { console.error('No se pudo actualizar folio del pedido:', error); }
+        }
         setGastos(gastosNube as unknown as Gasto[]);
         setCategorias(categoriasNube as unknown as CategoriaGasto[]);
         setProducciones(produccionesNube as unknown as RegistroProduccion[]);
         setConfiguracion({
           ...CONFIGURACION_DEFAULT,
           ...(configuracionNube || {}),
+          ...(!configuracionNube?.tema ? { tema: localStorage.getItem('preferenciaTema') || CONFIGURACION_DEFAULT.tema } : {}),
         } as ConfiguracionApp);
 
         console.info('Carga inicial desde Firebase completada.');
       } catch (error) {
         console.error('No se pudieron cargar los datos desde Firebase:', error);
+        setLoadError(error instanceof Error ? error.message : 'No fue posible leer los datos de Firebase.');
       } finally {
         if (!cancelado) setIsLoaded(true);
       }
@@ -258,6 +352,8 @@ setVentas(ventasActualizadas);
     recetas: Receta[];
     productos: ProductoVenta[];
     ventas: Venta[];
+    clientes: Cliente[];
+    pedidos: Pedido[];
     gastos: Gasto[];
     categorias: CategoriaGasto[];
     producciones: RegistroProduccion[];
@@ -268,7 +364,7 @@ setVentas(ventasActualizadas);
     if (!isLoaded) return;
 
     const actual = {
-      insumos, recetas, productos, ventas, gastos, categorias, producciones, configuracion
+      insumos, recetas, productos, ventas, clientes, pedidos, gastos, categorias, producciones, configuracion
     };
 
     // Establecer línea base después de completar la lectura de Firebase.
@@ -297,6 +393,8 @@ setVentas(ventasActualizadas);
             await guardarDocumento(coleccion, id, item);
           } catch (error) {
             console.error(`No se pudo guardar ${coleccion}/${id} en Firebase:`, error);
+            if (coleccion === 'clientes') localStorage.setItem('clientesLocal', JSON.stringify(nuevos));
+            if (coleccion === 'pedidos') localStorage.setItem('pedidosLocal', JSON.stringify(nuevos));
           }
         }
       }
@@ -318,6 +416,8 @@ setVentas(ventasActualizadas);
     void sincronizarLista('recetas', anterior.recetas, actual.recetas);
     void sincronizarLista('productos', anterior.productos, actual.productos);
     void sincronizarLista('ventas', anterior.ventas, actual.ventas);
+    void sincronizarLista('clientes', anterior.clientes, actual.clientes);
+    void sincronizarLista('pedidos', anterior.pedidos, actual.pedidos);
     void sincronizarLista('gastos', anterior.gastos, actual.gastos);
     void sincronizarLista('categorias', anterior.categorias, actual.categorias);
     void sincronizarLista('producciones', anterior.producciones, actual.producciones);
@@ -333,12 +433,13 @@ setVentas(ventasActualizadas);
       })();
     }
   }, [
-    isLoaded, insumos, recetas, productos, ventas, gastos,
+    isLoaded, insumos, recetas, productos, ventas, clientes, pedidos, gastos,
     categorias, producciones, configuracion
   ]);
 
   // Manejo de tema (Claro / Oscuro)
   useEffect(() => {
+    localStorage.setItem('preferenciaTema', configuracion.tema);
     const root = document.documentElement;
     let effectiveTema: 'light' | 'dark' = 'light';
 
@@ -712,11 +813,65 @@ const updatePresentacion = (
 
 
   const deletePresentacion = (productoId: string, presentacionId: string): boolean => {
+    const producto = productos.find((p) => p.id === productoId);
+    const presentacion = producto?.presentaciones?.find(
+      (p) => p.id === presentacionId
+    );
+    if (!producto || !presentacion) return false;
+
+    const stockPendiente = Math.max(0, presentacion.stockListo || 0);
+    const receta = recetas.find((r) => r.id === producto.recetaId);
+    const factorReceta = presentacion.factorReceta;
+    const devoluciones = new Map<string, number>();
+
+    if (stockPendiente > 0) {
+      if (
+        !receta ||
+        !receta.ingredientes?.length ||
+        !Number.isFinite(factorReceta) ||
+        factorReceta <= 0
+      ) {
+        return false;
+      }
+
+      for (const ingrediente of receta.ingredientes || []) {
+        devoluciones.set(
+          ingrediente.insumoId,
+          (devoluciones.get(ingrediente.insumoId) || 0) +
+            ingrediente.cantidad * factorReceta * stockPendiente
+        );
+      }
+
+      // No retirar el producto si no podemos devolver cada ingrediente con seguridad.
+      if ([...devoluciones.keys()].some((id) => !insumos.some((i) => i.id === id))) {
+        return false;
+      }
+    }
+
     const tieneVentas = ventas.some(
       (v) => v.productoId === productoId && v.presentacionId === presentacionId
     );
+
+    if (devoluciones.size > 0) {
+      setInsumos((prev) =>
+        prev.map((insumo) => {
+          const cantidadDevuelta = devoluciones.get(insumo.id) || 0;
+          return cantidadDevuelta > 0
+            ? {
+                ...insumo,
+                stockActual: insumo.stockActual + cantidadDevuelta,
+                fechaActualizacion: new Date().toISOString().split('T')[0],
+              }
+            : insumo;
+        })
+      );
+    }
+
     if (tieneVentas) {
-      updatePresentacion(productoId, presentacionId, { activo: false });
+      updatePresentacion(productoId, presentacionId, {
+        activo: false,
+        stockListo: 0,
+      });
       return false;
     }
 
@@ -890,6 +1045,42 @@ const updatePresentacion = (
       success: true,
       mensaje: 'Venta registrada correctamente.',
     };
+  };
+
+  const addCliente = (datos: Omit<Cliente, 'id'>): Cliente => {
+    const existente = clientes.find((c) => c.nombre.trim().toLocaleLowerCase() === datos.nombre.trim().toLocaleLowerCase());
+    if (existente) return existente;
+    const nuevo = { ...datos, id: `cli-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+    setClientes((prev) => [nuevo, ...prev]);
+    return nuevo;
+  };
+  const updateCliente = (id: string, cambios: Partial<Cliente>) => {
+    setClientes((prev) => prev.map((c) => c.id === id ? { ...c, ...cambios, id } : c));
+    setPedidos((prev) => prev.map((p) => p.clienteId === id && p.estado === 'pendiente' ? {
+      ...p, clienteNombre: cambios.nombre?.trim() || p.clienteNombre,
+      telefonoCliente: cambios.telefono, correoCliente: cambios.correo,
+    } : p));
+  };
+  const deleteCliente = (id: string): boolean => {
+    // Los pedidos guardan nombre y contacto como una instantánea; al borrar
+    // el cliente solo quitamos el vínculo del catálogo y conservamos historial.
+    setPedidos((prev) => prev.map((p) => p.clienteId === id ? { ...p, clienteId: undefined } : p));
+    setClientes((prev) => prev.filter((c) => c.id !== id));
+    return true;
+  };
+  const addPedido = (datos: Omit<Pedido, 'id' | 'folio'>) => {
+    const id = `ord-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setPedidos((prev) => [{ ...datos, id, folio: obtenerSiguienteFolioPedido(ventas, prev) }, ...prev]);
+  };
+  const generarSiguienteFolioPedido = () => obtenerSiguienteFolioPedido(ventas, pedidos);
+  const updatePedido = (id: string, cambios: Partial<Pedido>) => setPedidos((prev) => prev.map((p) => p.id === id ? { ...p, ...cambios } : p));
+  const deletePedido = (id: string): boolean => {
+    const pedido = pedidos.find((p) => p.id === id);
+    if (!pedido) return false;
+    const tieneVentas = ventas.some((v) => v.pedidoId === id || v.folioPedido === pedido.folio);
+    if (tieneVentas || pedido.estado === 'completado') return false;
+    setPedidos((prev) => prev.filter((p) => p.id !== id));
+    return true;
   };
 
   const updateVenta = (
@@ -1153,9 +1344,7 @@ const updatePresentacion = (
 
     const requerimientosPorInsumo = new Map<string, number>();
 
-    const consumosReceta = [
-      ...(receta.ingredientes || []),
-    ];
+    const consumosReceta = receta.ingredientes || [];
     
     for (const item of consumosReceta) {
       const requerido = item.cantidad * tandas;
@@ -1189,6 +1378,28 @@ const updatePresentacion = (
       };
     }
 
+    const productoDestino = productos.find((p) => p.id === sumarStockProductoId);
+    const presentacionDestino = productoDestino?.presentaciones?.find(
+      (pres) => pres.id === sumarStockPresentacionId
+    );
+    const factorReceta = presentacionDestino?.factorReceta ?? 1;
+
+    if (
+      sumarStockProductoId &&
+      sumarStockPresentacionId &&
+      (!presentacionDestino || !Number.isFinite(factorReceta) || factorReceta <= 0)
+    ) {
+      return {
+        success: false,
+        mensaje: 'La presentación seleccionada no tiene un factor de receta válido.',
+      };
+    }
+
+    // El stock de producto terminado se cuenta en unidades vendibles de la presentación.
+    const totalUnidadesElaboradas = presentacionDestino
+      ? tandas / factorReceta
+      : receta.rendimientoCantidad * tandas;
+
     // Descontar ingredientes, empaques, desechables y otros insumos
     if (descontarStock) {
       setInsumos((prev) =>
@@ -1208,22 +1419,23 @@ const updatePresentacion = (
       );
     }
 
-    // Sumar a stock de la presentación o producto seleccionado
-    const totalUnidadesElaboradas = receta.rendimientoCantidad * tandas;
-    if (sumarStockProductoId) {
+    if (sumarStockProductoId && sumarStockPresentacionId) {
       setProductos((prev) =>
         prev.map((p) => {
           if (p.id !== sumarStockProductoId) return p;
-          const presActualizadas = (p.presentaciones || []).map((pres) => {
-            if (sumarStockPresentacionId && pres.id === sumarStockPresentacionId) {
-              return {
-                ...pres,
-                stockListo: (pres.stockListo || 0) + totalUnidadesElaboradas,
-              };
-            }
-            return pres;
-          });
-          return { ...p, presentaciones: presActualizadas };
+        
+          return {
+            ...p,
+            presentaciones: (p.presentaciones || []).map((pres) =>
+              pres.id === sumarStockPresentacionId
+                ? {
+                    ...pres,
+                    stockListo:
+                      (pres.stockListo || 0) + totalUnidadesElaboradas,
+                  }
+                : pres
+            ),
+          };
         })
       );
     }
@@ -1235,6 +1447,7 @@ const updatePresentacion = (
       recetaNombre: receta.nombre,
       tandas,
       unidadesProducidas: totalUnidadesElaboradas,
+      presentacionNombre: presentacionDestino?.nombre,
       costoTotalTanda: receta.costoTotalReceta * tandas,
       descontoInventario: descontarStock,
       notas,
@@ -1244,7 +1457,9 @@ const updatePresentacion = (
 
     return {
       success: true,
-      mensaje: `Producción registrada con éxito: ${totalUnidadesElaboradas} ${receta.rendimientoUnidad} de "${receta.nombre}".`,
+      mensaje: presentacionDestino
+        ? `Producción registrada: ${totalUnidadesElaboradas} unidad(es) de "${presentacionDestino.nombre}" agregadas al stock.`
+        : `Producción registrada: ${totalUnidadesElaboradas} ${receta.rendimientoUnidad} de "${receta.nombre}".`,
     };
   };
 
@@ -1318,6 +1533,8 @@ const updatePresentacion = (
         }))
     );
     setVentas((prev) => prev.filter((v) => !v.esDemostracion));
+    const idsProductoDemo = new Set(productos.filter((p) => p.esDemostracion).map((p) => p.id));
+    setPedidos((prev) => prev.filter((p) => !p.items.some((item) => idsProductoDemo.has(item.productoId))));
     setGastos((prev) => prev.filter((g) => !g.esDemostracion));
     setProducciones((prev) => prev.filter((pr) => !pr.id.startsWith('prod-run-sample')));
   };
@@ -1327,6 +1544,8 @@ const updatePresentacion = (
     setRecetas([]);
     setProductos([]);
     setVentas([]);
+    setPedidos([]);
+    setClientes([]);
     setGastos([]);
     setProducciones([]);
     setCategorias(CATEGORIAS_DEFAULT);
@@ -1417,6 +1636,8 @@ const migrarDatosLocalesAFirebase = async (): Promise<{
       recetas,
       productos,
       ventas,
+      clientes,
+      pedidos,
       gastos,
       categorias,
       producciones,
@@ -1445,6 +1666,8 @@ const migrarDatosLocalesAFirebase = async (): Promise<{
       if (data.recetas && Array.isArray(data.recetas)) setRecetas(data.recetas);
       if (data.productos && Array.isArray(data.productos)) setProductos(data.productos);
       if (data.ventas && Array.isArray(data.ventas)) setVentas(data.ventas);
+      if (data.clientes && Array.isArray(data.clientes)) setClientes(data.clientes);
+      if (data.pedidos && Array.isArray(data.pedidos)) setPedidos(data.pedidos);
       if (data.gastos && Array.isArray(data.gastos)) setGastos(data.gastos);
       if (data.categorias && Array.isArray(data.categorias)) setCategorias(data.categorias);
       if (data.producciones && Array.isArray(data.producciones)) setProducciones(data.producciones);
@@ -1466,11 +1689,14 @@ const migrarDatosLocalesAFirebase = async (): Promise<{
         recetas,
         productos,
         ventas,
+        clientes,
+        pedidos,
         gastos,
         categorias,
         producciones,
         configuracion,
         isLoaded,
+        loadError,
         temaActual,
         addInsumo,
         updateInsumo,
@@ -1491,6 +1717,13 @@ const migrarDatosLocalesAFirebase = async (): Promise<{
         updateVenta,
         deleteVenta,
         marcarVentaCobrada,
+        addCliente,
+        updateCliente,
+        deleteCliente,
+        addPedido,
+        generarSiguienteFolioPedido,
+        updatePedido,
+        deletePedido,
         addGasto,
         registrarCompraHistoricaInsumo,
         updateGasto,

@@ -54,6 +54,19 @@ export const InventoryView: React.FC = () => {
   const recetaMap = useMemo(() => new Map(recetas.map((r) => [r.id, r])), [recetas]);
 
   const recetaSeleccionada = recetaMap.get(recetaSeleccionadaId);
+  const productoStockSeleccionado = productos.find((p) => p.id === sumarStockProdId);
+  const presentacionStockSeleccionada = productoStockSeleccionado?.presentaciones?.find(
+    (p) => p.id === sumarStockPresId
+  );
+  const tandasSeleccionadas = Number.parseFloat(tandas) || 0;
+  const rendimientoBaseTanda = recetaSeleccionada
+    ? recetaSeleccionada.rendimientoCantidad * tandasSeleccionadas
+    : 0;
+  const factorPresentacion = presentacionStockSeleccionada?.factorReceta;
+  const unidadesPresentacionTanda =
+    rendimientoBaseTanda > 0 && Number.isFinite(factorPresentacion) && factorPresentacion! > 0
+      ? tandasSeleccionadas / factorPresentacion!
+      : 0;
 
   // Previsualización de consumos para la tanda
   const previewConsumos = useMemo(() => {
@@ -67,32 +80,26 @@ export const InventoryView: React.FC = () => {
       suficiente: boolean;
     }[] = [];
 
-    recetaSeleccionada.ingredientes.forEach((ing) => {
-      const ins = insumoMap.get(ing.insumoId);
-      if (ins) {
-        const consumo = ing.cantidad * t;
-        items.push({
-          nombre: ins.nombre,
-          consumo,
-          unidad: ins.unidadUso,
-          stockActual: ins.stockActual,
-          suficiente: ins.stockActual >= consumo,
-        });
-      }
+    const cantidadesPorInsumo = new Map<string, number>();
+    const consumosReceta = recetaSeleccionada.ingredientes || [];
+
+    consumosReceta.forEach((item) => {
+      cantidadesPorInsumo.set(
+        item.insumoId,
+        (cantidadesPorInsumo.get(item.insumoId) || 0) + item.cantidad * t
+      );
     });
 
-    (recetaSeleccionada.empaques || []).forEach((emp) => {
-      const ins = insumoMap.get(emp.insumoId);
-      if (ins) {
-        const consumo = emp.cantidad * t;
-        items.push({
-          nombre: ins.nombre,
-          consumo,
-          unidad: ins.unidadUso,
-          stockActual: ins.stockActual,
-          suficiente: ins.stockActual >= consumo,
-        });
-      }
+    cantidadesPorInsumo.forEach((consumo, insumoId) => {
+      const ins = insumoMap.get(insumoId);
+      if (!ins) return;
+      items.push({
+        nombre: ins.nombre,
+        consumo,
+        unidad: ins.unidadUso,
+        stockActual: ins.stockActual,
+        suficiente: ins.stockActual >= consumo,
+      });
     });
 
     return items;
@@ -368,7 +375,12 @@ export const InventoryView: React.FC = () => {
                   </div>
                   <p className="text-[11px] text-slate-400 mt-0.5">
                     {formatFecha(prod.fecha, true)} • {prod.tandas} tanda(s) ={' '}
-                    <strong>{prod.unidadesProducidas} unidades elaboradas</strong>
+                    <strong>
+                      {prod.unidadesProducidas}{' '}
+                      {prod.presentacionNombre
+                        ? `unidades de ${prod.presentacionNombre}`
+                        : 'unidades elaboradas'}
+                    </strong>
                     {prod.notas && ` • ${prod.notas}`}
                   </p>
                 </div>
@@ -459,12 +471,12 @@ export const InventoryView: React.FC = () => {
             </div>
           </div>
 
-          {/* Resumen de Unidades Resultantes */}
+          {/* Rendimiento base de la receta */}
           {recetaSeleccionada && (
             <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-xs">
               <span className="font-bold text-amber-900 dark:text-amber-200">
-                Resultado de la tanda:{' '}
-                {recetaSeleccionada.rendimientoCantidad * (parseFloat(tandas) || 1)}{' '}
+                Rendimiento base de la receta:{' '}
+                {rendimientoBaseTanda}{' '}
                 {recetaSeleccionada.rendimientoUnidad}
               </span>
               <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80 mt-0.5">
@@ -522,6 +534,21 @@ export const InventoryView: React.FC = () => {
                 )}
             </select>
           </div>
+
+          {presentacionStockSeleccionada && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-100">
+              <p className="font-bold">
+                Se agregarán {Number.isInteger(unidadesPresentacionTanda)
+                  ? unidadesPresentacionTanda
+                  : unidadesPresentacionTanda.toFixed(2)}{' '}
+                {unidadesPresentacionTanda === 1 ? 'unidad' : 'unidades'} de «{presentacionStockSeleccionada.nombre}» al stock
+              </p>
+              <p className="mt-1 text-[11px] opacity-80">
+                Cada unidad usa {(factorPresentacion! * 100).toFixed(1)}% de la receta.
+                Revisa que el factor corresponda al tamaño que realmente vendes.
+              </p>
+            </div>
+          )}
 
 
           {/* Lista de Insumos que se consumirán */}

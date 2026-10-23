@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Receipt,
   Plus,
@@ -37,6 +37,7 @@ export const ExpensesView: React.FC = () => {
 
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
+  const [paginaHistorial, setPaginaHistorial] = useState(1);
 
   // Modal Crear / Editar
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -244,6 +245,15 @@ export const ExpensesView: React.FC = () => {
     fechaFin,
   ]);
 
+  const gastosOrdenados = useMemo(
+    () => [...gastosFiltrados].sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id)),
+    [gastosFiltrados]
+  );
+  const paginasHistorial = Math.max(1, Math.ceil(gastosOrdenados.length / 10));
+  const gastosPagina = gastosOrdenados.slice((paginaHistorial - 1) * 10, paginaHistorial * 10);
+  useEffect(() => { setPaginaHistorial(1); }, [busqueda, filtroAmbito, filtroCategoria, filtroFormaPago, filtroPeriodo, fechaInicio, fechaFin]);
+  useEffect(() => { setPaginaHistorial((pagina) => Math.min(pagina, paginasHistorial)); }, [paginasHistorial]);
+
   // Totales de la lista filtrada
   const totalFiltrado = gastosFiltrados.reduce((sum, g) => sum + g.importe, 0);
   const totalNegocio = gastosFiltrados
@@ -386,24 +396,25 @@ export const ExpensesView: React.FC = () => {
           </div>
         </div>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
-              Periodo de gastos
-            </label>
-            <select
-              value={filtroPeriodo}
-              onChange={(e) => setFiltroPeriodo(e.target.value as typeof filtroPeriodo)}
-              className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-            >
-              <option value="todos">Todos los periodos</option>
-              <option value="hoy">Hoy</option>
-              <option value="semana">Esta semana</option>
-              <option value="quincena">Esta Quincena</option>
-              <option value="mes">Este mes</option>
-              <option value="anio">Este año</option>
-              <option value="personalizado">Periodo personalizado</option>
-            </select>
+        <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar gastos por periodo">
+            {([
+              ['hoy', 'Hoy'],
+              ['semana', 'Semana'],
+              ['quincena', 'Quincena'],
+              ['mes', 'Mes'],
+              ['todos', 'Todos'],
+              ['personalizado', 'Fechas'],
+            ] as const).map(([valor, etiqueta]) => {
+              const activo = filtroPeriodo === valor || (valor === 'todos' && filtroPeriodo === 'todos');
+              return <button key={valor} type="button" aria-pressed={activo}
+                onClick={() => setFiltroPeriodo(valor)}
+                className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition ${activo
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>
+                {etiqueta}
+              </button>;
+            })}
           </div>
                   
           {filtroPeriodo === 'personalizado' && (
@@ -462,7 +473,7 @@ export const ExpensesView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                gastosFiltrados.map((gasto) => (
+                gastosPagina.map((gasto) => (
                   <tr
                     key={gasto.id}
                     className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition"
@@ -543,6 +554,10 @@ export const ExpensesView: React.FC = () => {
             </tbody>
           </table>
         </div>
+        {gastosOrdenados.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-xs dark:border-slate-800">
+          <span className="text-slate-500">Mostrando {(paginaHistorial - 1) * 10 + 1}–{Math.min(paginaHistorial * 10, gastosOrdenados.length)} de {gastosOrdenados.length} gastos</span>
+          <div className="flex items-center gap-2"><button disabled={paginaHistorial <= 1} onClick={() => setPaginaHistorial((pagina) => Math.max(1, pagina - 1))} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40 dark:border-slate-700">Anterior</button><span className="px-1">Página {paginaHistorial} de {paginasHistorial}</span><button disabled={paginaHistorial >= paginasHistorial} onClick={() => setPaginaHistorial((pagina) => Math.min(paginasHistorial, pagina + 1))} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40 dark:border-slate-700">Siguiente</button></div>
+        </div>}
       </div>
 
       {/* Modal Crear / Editar Gasto */}

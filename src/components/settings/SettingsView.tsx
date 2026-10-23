@@ -137,25 +137,25 @@ export const SettingsView: React.FC = () => {
           </div>
           <div className="space-y-1">
             <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2">
-              Almacenamiento Local Seguro (Offline-First)
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300">
-                Activo
+              Almacenamiento en la nube
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300">
+                Firebase
               </span>
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-              <strong>¿Dónde se guardan tus datos?</strong> Tus gastos, recetas, insumos y ventas se almacenan de manera local y privada en la memoria de este navegador web (LocalStorage / IndexedDB). No se envían a servidores externos y la app funciona 100% sin conexión a internet.
+              <strong>¿Dónde se guardan tus datos?</strong> Los registros del negocio se cargan y sincronizan con Firebase Firestore. La copia JSON te permite descargar un respaldo adicional y restaurarlo cuando lo necesites. Se requiere conexión para cargar y guardar cambios; la aplicación no conserva una copia local completa para trabajar sin conexión.
             </p>
           </div>
         </div>
 
-        {/* Limitación y preparación para Base de Datos en la Nube */}
+        {/* Estado de sincronización y operación sin conexión */}
         <div className="p-4 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-xs space-y-2">
           <div className="flex items-center gap-2 font-bold text-amber-900 dark:text-amber-200">
             <Cloud className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-            <span>Preparación para Base de Datos en la Nube (Cloud Ready):</span>
+            <span>Conexión y respaldos:</span>
           </div>
           <p className="text-amber-800/90 dark:text-amber-300/90 leading-relaxed">
-            <strong>Limitación actual:</strong> Al estar guardados en este dispositivo, si borras el caché del navegador o cambias de celular sin exportar un respaldo, los datos podrían perderse. La estructura de datos ya está tipada y normalizada para conectarse a una base de datos segura en la nube (como Firebase Firestore o Cloud SQL PostgreSQL) cuando desees sincronización en tiempo real entre múltiples dispositivos.
+            La app consulta Firebase al iniciar. Si no hay conexión, no se pueden confirmar los cambios ni cargar los datos del negocio; espera a recuperar internet antes de registrar operaciones. Descarga respaldos JSON periódicamente y guárdalos en un lugar seguro.
           </p>
         </div>
 

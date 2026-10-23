@@ -978,6 +978,27 @@ export const ProductsView: React.FC = () => {
             </div>
           </div>
 
+          
+          {/* EXISTENCIAS DE LA PRESENTACIÓN */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Stock listo de {presNombre.trim() || 'esta presentación'}
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              required
+              value={presStockListo}
+              onChange={(e) => setPresStockListo(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-bold"
+            />
+            <span className="text-[10px] text-slate-400 mt-1 block">
+              Cuenta unidades vendibles de esta presentación. Por ejemplo, pays completos y rebanadas llevan existencias separadas.
+            </span>
+          </div>
+
+
           <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
@@ -1022,7 +1043,7 @@ export const ProductsView: React.FC = () => {
             setPresAEliminar(null);
           }}
           title="Eliminar Presentación"
-          message={`¿Estás seguro de eliminar la presentación "${presAEliminar.nombre}"?`}
+          message={`¿Eliminar "${presAEliminar.nombre}"? Si queda stock, se pondrá en cero y se devolverán sus ingredientes según la receta y el factor actuales. Si ya tuvo ventas, se conservará desactivada para mantener el historial. Los empaques de esta presentación se descuentan al vender, así que no se devuelven por el stock que aún queda.`}
           confirmText="Eliminar Presentación"
           isDestructive={true}
         />

@@ -20,6 +20,7 @@ import { OfflineIndicator } from './components/common/OfflineIndicator';
 import { AuthGate } from './components/auth/AuthGate';
 import { MigracionFirebaseView } from './components/admin/MigracionFirebaseView';
 import { AdminUsuariosView } from './components/admin/AdminUsuariosView';
+import { OrdersView } from './components/orders/OrdersView';
 
 function MainApp() {
   const [activeTab, setActiveTab] = useState(() => {
@@ -28,7 +29,7 @@ function MainApp() {
 useEffect(() => {
   localStorage.setItem('activeTab', activeTab);
 }, [activeTab]);
-  const { isLoaded } = useApp();
+  const { isLoaded, loadError } = useApp();
 
   if (!isLoaded) {
     return (
@@ -55,6 +56,8 @@ useEffect(() => {
         return <ProductsView />;
       case 'sales':
         return <SalesView />;
+      case 'orders':
+        return <OrdersView onNavigate={setActiveTab} />;
       case 'inventory':
         return <InventoryView />;
       case 'reports':
@@ -74,6 +77,10 @@ useEffect(() => {
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
       {/* Barra superior de navegación */}
       <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+
+      {loadError && <div role="alert" className="mx-3 mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-200">
+        No se pudieron cargar los datos guardados. Tus ventas y artículos no se borraron. Detalle: {loadError}
+      </div>}
 
       {/* Contenedor Principal con Sidebar y Área de Contenido */}
       <div className="flex-1 flex flex-col lg:flex-row w-full min-w-0 mx-auto">

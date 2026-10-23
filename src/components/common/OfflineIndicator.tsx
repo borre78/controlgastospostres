@@ -10,7 +10,7 @@ export const OfflineIndicator: React.FC = () => {
   return (
     <div className="fixed bottom-16 sm:bottom-4 left-4 z-50 flex items-center gap-2 rounded-xl bg-amber-500/95 dark:bg-amber-600/95 backdrop-blur-xs px-3.5 py-2 text-xs font-semibold text-white shadow-lg border border-amber-400">
       <WifiOff className="w-4 h-4 animate-pulse" />
-      <span>Modo sin conexión — Tus datos están seguros y guardados localmente</span>
+      <span>Sin conexión — No se pueden cargar ni sincronizar datos con Firebase</span>
     </div>
   );
 };

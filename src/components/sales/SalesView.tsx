@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ShoppingBag,
   Plus,
@@ -33,6 +33,9 @@ export const SalesView: React.FC = () => {
     updateVenta,
     deleteVenta,
     marcarVentaCobrada,
+    pedidos,
+    updatePedido,
+    generarSiguienteFolioPedido,
   } = useApp();
 
   const [busqueda, setBusqueda] = useState('');
@@ -46,6 +49,7 @@ export const SalesView: React.FC = () => {
 
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
+  const [paginaHistorial, setPaginaHistorial] = useState(1);
 
   // Modal Crear / Editar
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -79,6 +83,33 @@ export const SalesView: React.FC = () => {
   const [formaPago, setFormaPago] = useState<FormaPago>('efectivo');
   const [notas, setNotas] = useState('');
   const [descontarStock, setDescontarStock] = useState(true);
+  const [pedidoOrigenId, setPedidoOrigenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const pedidoId = localStorage.getItem('pedidoParaVenta');
+    if (!pedidoId) return;
+    localStorage.removeItem('pedidoParaVenta');
+    const pedido = pedidos.find((p) => p.id === pedidoId);
+    if (!pedido || pedido.estado !== 'pendiente' || pedido.items.length === 0) return;
+    const [principal, ...adicionales] = pedido.items;
+    if (!principal) return;
+    setEditingVenta(null);
+    setPedidoOrigenId(pedido.id);
+    setFecha(getFechaHoy());
+    setCliente(pedido.clienteNombre);
+    setTelefonoCliente(pedido.telefonoCliente || '');
+    setProductoId(principal.productoId);
+    setPresentacionId(principal.presentacionId);
+    setCantidad(String(principal.cantidad));
+    setPrecioUnitario(String(principal.precioUnitario));
+    setDescuento('0');
+    setEstadoCobro('pendiente');
+    setFormaPago('efectivo');
+    setNotas([`Pedido ${pedido.folio}`, pedido.notas].filter(Boolean).join(' · '));
+    setDescontarStock(true);
+    setProductosPedido(adicionales.map((i) => ({ id: i.id, productoId: i.productoId, presentacionId: i.presentacionId, cantidad: String(i.cantidad), precioUnitario: String(i.precioUnitario), descuento: '0' })));
+    setIsModalOpen(true);
+  }, [pedidos]);
 
   // Mapeo
   const productoMap = useMemo(() => {
@@ -601,8 +632,9 @@ export const SalesView: React.FC = () => {
 
 
     } else {
-      const pedidoId = `pedido-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const folioPedido = `PED-${Date.now().toString().slice(-8)}`;
+      const pedidoRegistrado = pedidoOrigenId ? pedidos.find((p) => p.id === pedidoOrigenId) : undefined;
+      const pedidoId = pedidoRegistrado?.id || `pedido-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const folioPedido = pedidoRegistrado?.folio || generarSiguienteFolioPedido();
       console.log('Folio generado:', folioPedido);
       // Guardar el producto principal
       const resultadoVenta = addVenta(
@@ -628,7 +660,6 @@ export const SalesView: React.FC = () => {
         alert(resultadoVenta.mensaje);
         return;
       }
-
       // Guardar cada producto adicional como otra venta
       productosPedido.forEach((item) => {
         const productoItem = productoMap.get(item.productoId);
@@ -675,6 +706,7 @@ export const SalesView: React.FC = () => {
           return;
         }
       });
+      if (pedidoRegistrado) updatePedido(pedidoRegistrado.id, { estado: 'completado' });
     }
 
     setProductosPedido([]);
@@ -896,8 +928,14 @@ export const SalesView: React.FC = () => {
       cantidadProductos: productos.length,
       fecha: productos[0].fecha,
       cliente: productos[0].cliente,
-    }));
+    })).sort((a, b) => b.fecha.localeCompare(a.fecha) ||
+      Number(b.productos[0].folioPedido?.match(/(\d+)$/)?.[1] || 0) - Number(a.productos[0].folioPedido?.match(/(\d+)$/)?.[1] || 0));
   }, [ventasFiltradas]);
+
+  const paginasHistorial = Math.max(1, Math.ceil(pedidosAgrupados.length / 10));
+  const pedidosPagina = pedidosAgrupados.slice((paginaHistorial - 1) * 10, paginaHistorial * 10);
+  useEffect(() => { setPaginaHistorial(1); }, [busqueda, filtroEstado, filtroProducto, filtroFormaPago, filtroPeriodo, fechaInicio, fechaFin]);
+  useEffect(() => { setPaginaHistorial((pagina) => Math.min(pagina, paginasHistorial)); }, [paginasHistorial]);
 
   // Totales
   const totalCobrado = ventasFiltradas
@@ -926,7 +964,7 @@ export const SalesView: React.FC = () => {
         </div>
 
         <button
-          onClick={handleOpenNuevo}
+          onClick={() => { setPedidoOrigenId(null); handleOpenNuevo(); }}
           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition active:scale-95"
         >
           <Plus className="w-4 h-4" />
@@ -1120,14 +1158,14 @@ export const SalesView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-              {ventasFiltradas.length === 0 ? (
+              {pedidosAgrupados.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400">
                     No hay ventas registradas con los filtros seleccionados.
                   </td>
                 </tr>
               ) : (
-                  pedidosAgrupados.flatMap((pedido) =>
+                  pedidosPagina.flatMap((pedido) =>
                     pedido.productos.map((v, indiceProducto) => (
                       <React.Fragment key={v.id}>
                         {indiceProducto === 0 && (
@@ -1258,6 +1296,10 @@ export const SalesView: React.FC = () => {
             </tbody>
           </table>
         </div>
+        {pedidosAgrupados.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-xs dark:border-slate-800">
+          <span className="text-slate-500">Mostrando {(paginaHistorial - 1) * 10 + 1}–{Math.min(paginaHistorial * 10, pedidosAgrupados.length)} de {pedidosAgrupados.length} pedidos</span>
+          <div className="flex items-center gap-2"><button disabled={paginaHistorial <= 1} onClick={() => setPaginaHistorial((pagina) => Math.max(1, pagina - 1))} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40 dark:border-slate-700">Anterior</button><span className="px-1">Página {paginaHistorial} de {paginasHistorial}</span><button disabled={paginaHistorial >= paginasHistorial} onClick={() => setPaginaHistorial((pagina) => Math.min(paginasHistorial, pagina + 1))} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40 dark:border-slate-700">Siguiente</button></div>
+        </div>}
       </div>
 
       {/* Modal Registrar / Editar Venta */}

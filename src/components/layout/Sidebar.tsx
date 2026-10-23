@@ -6,6 +6,7 @@ import {
   UtensilsCrossed,
   Tag,
   ShoppingBag,
+  ClipboardList,
   Boxes,
   BarChart3,
   Settings,
@@ -30,7 +31,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
-  const { insumos, ventas } = useApp();
+  const { insumos, ventas, pedidos } = useApp();
 
   // Insumos con bajo stock para alertar al usuario
   const insumosBajoStock = insumos.filter((i) => i.stockActual < i.stockMinimo).length;
@@ -69,6 +70,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       label: 'Productos y Precios',
       shortLabel: 'Productos',
       icon: Tag,
+    },
+    {
+      id: 'orders', label: 'Pedidos y Clientes', shortLabel: 'Pedidos', icon: ClipboardList,
+      badge: pedidos.filter((p) => p.estado === 'pendiente').length || undefined,
+      badgeColor: 'bg-violet-500',
     },
     {
       id: 'sales',

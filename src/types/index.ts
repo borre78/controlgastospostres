@@ -184,6 +184,10 @@ export interface Venta {
   }[];
 }
 
+export interface Cliente { id: string; nombre: string; telefono?: string; correo?: string; }
+export interface PedidoItem { id: string; productoId: string; productoNombre: string; presentacionId: string; presentacionNombre: string; cantidad: number; precioUnitario: number; }
+export interface Pedido { id: string; folio: string; fecha: string; fechaEntrega?: string; clienteId?: string; clienteNombre: string; telefonoCliente?: string; correoCliente?: string; items: PedidoItem[]; estado: 'pendiente' | 'completado' | 'cancelado'; notas?: string; }
+
 export interface Gasto {
   id: string;
   fecha: string; // YYYY-MM-DD
@@ -216,6 +220,7 @@ export interface RegistroProduccion {
   recetaNombre: string;
   tandas: number; // número de veces que se preparó la receta
   unidadesProducidas: number;
+  presentacionNombre?: string;
   costoTotalTanda: number;
   descontoInventario: boolean;
   notas?: string;
