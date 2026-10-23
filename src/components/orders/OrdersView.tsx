@@ -18,6 +18,7 @@ export const OrdersView: React.FC<{ onNavigate: (tab: string) => void }> = ({ on
   const [cantidad, setCantidad] = useState('1');
   const [precio, setPrecio] = useState('');
   const [busqueda, setBusqueda] = useState('');
+  const [busquedaClientes, setBusquedaClientes] = useState('');
   const [paginaPedidos, setPaginaPedidos] = useState(1);
   const [paginaClientes, setPaginaClientes] = useState(1);
   const [editingPedido, setEditingPedido] = useState<Pedido | null>(null);
@@ -34,9 +35,14 @@ export const OrdersView: React.FC<{ onNavigate: (tab: string) => void }> = ({ on
     .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()), [pedidos, busqueda]);
   const totalPaginasPedidos = Math.max(1, Math.ceil(pedidosFiltrados.length / 5));
   const pedidosPagina = pedidosFiltrados.slice((paginaPedidos - 1) * 5, paginaPedidos * 5);
-  const clientesOrdenados = useMemo(() => [...clientes].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')), [clientes]);
+  const clientesOrdenados = useMemo(() => {
+    const consulta = busquedaClientes.trim().toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return [...clientes]
+      .filter((cliente) => cliente.nombre.toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(consulta))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  }, [clientes, busquedaClientes]);
   const totalPaginasClientes = Math.max(1, Math.ceil(clientesOrdenados.length / 5));
-  const clientesPagina = clientesOrdenados.slice((paginaClientes - 1) * 5, paginaClientes * 5);
+  const clientesPagina = clientesOrdenados.slice((paginaClientes - 1) * 6, paginaClientes * 6);
   const resumenProduccion = useMemo(() => {
     const cantidades = new Map<string, { productoId: string; presentacionId: string; productoNombre: string; presentacionNombre: string; solicitadas: number }>();
     for (const pedido of pedidos) {
@@ -248,7 +254,11 @@ export const OrdersView: React.FC<{ onNavigate: (tab: string) => void }> = ({ on
       </div>
     </section>
     <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-      <h3 className="mb-3 font-bold">Catálogo de clientes ({clientes.length})</h3>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h3 className="font-bold">Catálogo de clientes ({clientesOrdenados.length}{busquedaClientes.trim() ? ` de ${clientes.length}` : ''})</h3>
+        <input aria-label="Buscar cliente por nombre o apellido" className="w-full max-w-xs rounded-xl border bg-white p-2 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="Buscar por nombre o apellido" value={busquedaClientes} onChange={(e) => { setBusquedaClientes(e.target.value); setPaginaClientes(1); }}/>
+      </div>
+      {clientesOrdenados.length === 0 && <p className="rounded-xl border border-dashed p-4 text-sm text-slate-500">{clientes.length ? 'No se encontraron clientes con ese nombre o apellido.' : 'Aún no hay clientes registrados.'}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
         {clientesPagina.map((c) => <article key={c.id} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800">
           {editingCliente === c.id ? <div className="space-y-2">
@@ -259,7 +269,7 @@ export const OrdersView: React.FC<{ onNavigate: (tab: string) => void }> = ({ on
           </div> : <div className="flex items-start justify-between gap-2"><div><b className="text-sm">{c.nombre}</b><p className="text-xs text-slate-500">{[c.telefono, c.correo].filter(Boolean).join(' · ') || 'Sin datos de contacto'}</p></div><div className="flex gap-1"><button title="Editar cliente" onClick={() => { setEditingCliente(c.id); setClienteEditNombre(c.nombre); setClienteEditTelefono(c.telefono || ''); setClienteEditCorreo(c.correo || ''); }} className="rounded-lg border p-2"><Pencil size={13}/></button><button title="Eliminar cliente" onClick={() => { void confirmarAccion(`¿Eliminar al cliente ${c.nombre}? Se conservarán su nombre y datos en el historial de pedidos.`, 'Eliminar cliente').then((confirmado) => { if (confirmado) { deleteCliente(c.id); setMensaje('Cliente eliminado; sus datos históricos en pedidos se conservaron.'); } }); }} className="rounded-lg border border-rose-200 p-2 text-rose-600"><Trash2 size={13}/></button></div></div>}
         </article>)}
       </div>
-      {clientes.length > 0 && <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3 text-xs dark:border-slate-800"><span>Mostrando {(paginaClientes - 1) * 5 + 1}–{Math.min(paginaClientes * 5, clientes.length)} de {clientes.length}</span><div className="flex gap-2"><button disabled={paginaClientes <= 1} onClick={() => setPaginaClientes((p) => Math.max(1, p - 1))} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Anterior</button><span className="px-2 py-1.5">Página {paginaClientes} de {totalPaginasClientes}</span><button disabled={paginaClientes >= totalPaginasClientes} onClick={() => setPaginaClientes((p) => Math.min(totalPaginasClientes, p + 1))} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Siguiente</button></div></div>}
+      {clientesOrdenados.length > 0 && <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3 text-xs dark:border-slate-800"><span>Mostrando {(paginaClientes - 1) * 5 + 1}–{Math.min(paginaClientes * 5, clientesOrdenados.length)} de {clientesOrdenados.length}</span><div className="flex gap-2"><button disabled={paginaClientes <= 1} onClick={() => setPaginaClientes((p) => Math.max(1, p - 1))} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Anterior</button><span className="px-2 py-1.5">Página {paginaClientes} de {totalPaginasClientes}</span><button disabled={paginaClientes >= totalPaginasClientes} onClick={() => setPaginaClientes((p) => Math.min(totalPaginasClientes, p + 1))} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Siguiente</button></div></div>}
     </section>
   </div>;
 };
