@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { mostrarModalAviso } from '../../utils/appDialog';
 import {
   Apple,
   Plus,
@@ -142,6 +143,7 @@ export const IngredientsView: React.FC = () => {
     reabastecerInsumo,
     registrarCompraHistoricaInsumo,
     recalcularTodasLasRecetas,
+    confirmarAccion,
   } = useApp();
 
   const insumosConCompraHistoricaRegistrada = new Set(
@@ -292,7 +294,7 @@ const calculoEnVivo = useMemo(() => {
     const stockReq = Math.max(0, parseFloat(formStockRequerido) || 0);
 
     if (!formNombre.trim() || isNaN(cantCompra) || cantCompra <= 0 || isNaN(precioCompra) || precioCompra <= 0) {
-      alert('Por favor ingresa un nombre, cantidad comprada y precio válidos.');
+      mostrarModalAviso('Por favor ingresa un nombre, cantidad comprada y precio válidos.');
       return;
     }
 
@@ -359,7 +361,7 @@ const calculoEnVivo = useMemo(() => {
     const cant = parseFloat(reabastecerCantidad);
     const precio = parseFloat(reabastecerPrecio);
     if (isNaN(cant) || cant <= 0 || isNaN(precio) || precio <= 0) {
-      alert('Por favor introduce cantidad y precio válidos.');
+      mostrarModalAviso('Por favor introduce cantidad y precio válidos.');
       return;
     }
 
@@ -377,30 +379,25 @@ const calculoEnVivo = useMemo(() => {
   
   const handleRegistrarComprasHistoricas = () => {
     if (insumosPendientesCompraHistorica.length === 0) {
-      alert('Todos los insumos ya tienen registrada su compra inicial.');
+      mostrarModalAviso('Todos los insumos ya tienen registrada su compra inicial.');
       return;
     }
 
-    const confirmar = window.confirm(
+    void confirmarAccion(
       `Se registrarán ${insumosPendientesCompraHistorica.length} compras históricas por un total de ${formatMXN(
         insumosPendientesCompraHistorica.reduce(
           (total, insumo) => total + insumo.precioCompra,
           0
         )
-      )}. No se modificarán las existencias. ¿Deseas continuar?`
-    );
-
-    if (!confirmar) return;
-
-    insumosPendientesCompraHistorica.forEach((insumo) => {
-      registrarCompraHistoricaInsumo(
-        insumo,
-        fechaCompraHistorica,
-        formaPagoHistorica
-      );
+      )}. No se modificarán las existencias. ¿Deseas continuar?`,
+      'Registrar compras históricas'
+    ).then((confirmado) => {
+      if (!confirmado) return;
+      insumosPendientesCompraHistorica.forEach((insumo) => {
+        registrarCompraHistoricaInsumo(insumo, fechaCompraHistorica, formaPagoHistorica);
+      });
+      mostrarModalAviso('Las compras históricas se registraron correctamente.');
     });
-
-    alert('Las compras históricas se registraron correctamente.');
   };
 
 
@@ -409,7 +406,7 @@ const calculoEnVivo = useMemo(() => {
     if (!insumoAAjustar) return;
     const nuevo = parseFloat(nuevoStockAjuste);
     if (isNaN(nuevo) || nuevo < 0) {
-      alert('Ingresa un valor de stock válido.');
+      mostrarModalAviso('Ingresa un valor de stock válido.');
       return;
     }
     ajustarStockInsumo(insumoAAjustar.id, nuevo);
@@ -442,21 +439,16 @@ const calculoEnVivo = useMemo(() => {
   const insumosBajoStockCount = insumos.filter((i) => i.stockActual < i.stockMinimo).length;
 
   const handleRegistrarRevision = () => {
-    const confirmar = window.confirm(
-      '¿Confirmas que realizaste la revisión del inventario de hoy?'
-    );
-
-    if (!confirmar) return;
-
-    const fechaHoy = new Date();
-    const fechaLocal =
-      `${fechaHoy.getFullYear()}-${String(fechaHoy.getMonth() + 1).padStart(2, '0')}-${String(fechaHoy.getDate()).padStart(2, '0')}`;
-
-    updateConfiguracion({
-      fechaUltimaRevisionStock: fechaLocal,
+    void confirmarAccion(
+      '¿Confirmas que realizaste la revisión del inventario de hoy?',
+      'Revisión de inventario'
+    ).then((confirmado) => {
+      if (!confirmado) return;
+      const fechaHoy = new Date();
+      const fechaLocal = `${fechaHoy.getFullYear()}-${String(fechaHoy.getMonth() + 1).padStart(2, '0')}-${String(fechaHoy.getDate()).padStart(2, '0')}`;
+      updateConfiguracion({ fechaUltimaRevisionStock: fechaLocal });
+      mostrarModalAviso('La revisión de inventario se registró correctamente.');
     });
-
-    alert('La revisión de inventario se registró correctamente.');
   };
 
   // Configuración de la revisión de inventario
@@ -1267,7 +1259,7 @@ const calculoEnVivo = useMemo(() => {
                   const imagenComprimida = await comprimirImagen(archivo);
                   setFormImagenUrl(imagenComprimida);
                 } catch (error) {
-                  alert(
+                  mostrarModalAviso(
                     error instanceof Error
                       ? error.message
                       : 'No se pudo procesar la imagen.'
@@ -1477,7 +1469,7 @@ const calculoEnVivo = useMemo(() => {
           onConfirm={() => {
             const exito = deleteInsumo(insumoAEliminar.id);
             if (!exito) {
-              alert(
+              mostrarModalAviso(
                 'No se puede eliminar este insumo porque forma parte de una o más recetas activas. Elimínalo primero de las recetas.'
               );
             }

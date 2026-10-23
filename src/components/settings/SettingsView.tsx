@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { mostrarModalAviso } from '../../utils/appDialog';
 import {
   Settings,
   Database,
@@ -582,7 +583,7 @@ export const SettingsView: React.FC = () => {
           onConfirm={() => {
             const ok = deleteCategoria(catAEliminar.id);
             if (!ok) {
-              alert('No se puede eliminar esta categoría porque ya tiene gastos registrados.');
+              mostrarModalAviso('No se puede eliminar esta categoría porque ya tiene gastos registrados.');
             }
             setCatAEliminar(null);
           }}

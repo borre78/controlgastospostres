@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { mostrarModalAviso } from '../../utils/appDialog';
 import {
   UtensilsCrossed,
   Plus,
@@ -186,7 +187,7 @@ setUnidadMedidaBase(rec.unidadMedidaBase || 'unidades');
   const handleAddIngredienteFila = () => {
     const primerInsumo = insumosIngredientes[0] || insumos[0];
     if (!primerInsumo) {
-      alert('Debes registrar insumos en el catálogo primero antes de crear una receta.');
+      mostrarModalAviso('Debes registrar insumos en el catálogo primero antes de crear una receta.');
       return;
     }
     setIngredientes((prev) => [...prev, { insumoId: primerInsumo.id, cantidad: 100 }]);
@@ -198,12 +199,12 @@ setUnidadMedidaBase(rec.unidadMedidaBase || 'unidades');
     e.preventDefault();
     const rendCant = parseFloat(rendimientoCantidad);
     if (!nombre.trim() || isNaN(rendCant) || rendCant <= 0) {
-      alert('Ingresa un nombre y un rendimiento válido para la receta.');
+      mostrarModalAviso('Ingresa un nombre y un rendimiento válido para la receta.');
       return;
     }
 
     if (ingredientes.length === 0) {
-      alert('Agrega al menos un ingrediente a la receta.');
+      mostrarModalAviso('Agrega al menos un ingrediente a la receta.');
       return;
     }
 
@@ -865,7 +866,7 @@ setUnidadMedidaBase(rec.unidadMedidaBase || 'unidades');
           onConfirm={() => {
             const exito = deleteReceta(recetaAEliminar.id);
             if (!exito) {
-              alert(
+              mostrarModalAviso(
                 'No se puede eliminar esta receta porque está vinculada a uno o más productos a la venta. Desvincula primero los productos.'
               );
             }

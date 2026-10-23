@@ -3,6 +3,7 @@ import React, { useRef, useState } from 'react';
 import { auth } from '../../firebase';
 import { importarRespaldoAFirestore } from '../../services/firestoreImportService';
 import { useApp } from '../../context/AppContext';
+import { mostrarModalAviso } from '../../utils/appDialog';
 
 export function MigracionFirebaseView() {
 const { migrarDatosLocalesAFirebase } = useApp();
@@ -13,10 +14,10 @@ const ejecutarMigracion = async () => {
 
   try {
     const resultado = await migrarDatosLocalesAFirebase();
-    alert(resultado.mensaje);
+    mostrarModalAviso(resultado.mensaje);
   } catch (error) {
     console.error(error);
-    alert('No se pudo completar la migración.');
+    mostrarModalAviso('No se pudo completar la migración.');
   } finally {
     setMigrando(false);
   }

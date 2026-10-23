@@ -5,7 +5,7 @@ import { Pedido, PedidoItem } from '../../types';
 import { formatMXN, getFechaHoy } from '../../utils/formatters';
 
 export const OrdersView: React.FC<{ onNavigate: (tab: string) => void }> = ({ onNavigate }) => {
-  const { pedidos, clientes, productos, ventas, addCliente, updateCliente, deleteCliente, addPedido, updatePedido, deletePedido } = useApp();
+  const { pedidos, clientes, productos, recetas, insumos, ventas, addCliente, updateCliente, deleteCliente, addPedido, updatePedido, deletePedido, confirmarAccion } = useApp();
   const [clienteId, setClienteId] = useState('');
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
@@ -60,6 +60,67 @@ export const OrdersView: React.FC<{ onNavigate: (tab: string) => void }> = ({ on
       return { ...item, stockListo, porPreparar: Math.max(0, item.solicitadas - stockListo) };
     }).sort((a, b) => a.productoNombre.localeCompare(b.productoNombre, 'es') || a.presentacionNombre.localeCompare(b.presentacionNombre, 'es'));
   }, [pedidos, productos]);
+  const faltantesInsumosPedidos = useMemo(() => {
+    const requeridos = new Map<string, number>();
+    const advertencias = new Set<string>();
+    const tandasPorReceta = new Map<string, { recetaId: string; fracciones: number; recetaNombre: string; rendimientoCantidad: number; rendimientoUnidad: string }>();
+    const demandaPorPresentacion = new Map<string, { productoId: string; presentacionId: string; cantidad: number; productoNombre: string; presentacionNombre: string }>();
+    for (const pedido of pedidos) {
+      if (pedido.estado !== 'pendiente') continue;
+      for (const item of pedido.items || []) {
+        const key = `${item.productoId}::${item.presentacionId}`;
+        const previo = demandaPorPresentacion.get(key);
+        demandaPorPresentacion.set(key, { productoId: item.productoId, presentacionId: item.presentacionId, cantidad: (previo?.cantidad || 0) + item.cantidad, productoNombre: item.productoNombre, presentacionNombre: item.presentacionNombre });
+      }
+    }
+    for (const item of demandaPorPresentacion.values()) {
+        const producto = productos.find((p) => p.id === item.productoId);
+        const presentacion = producto?.presentaciones.find((p) => p.id === item.presentacionId);
+        const receta = recetas.find((r) => r.id === producto?.recetaId);
+        if (!producto || !presentacion || !receta) {
+          advertencias.add(`${item.productoNombre} — ${item.presentacionNombre}`);
+          continue;
+        }
+        const unidadesPorHacer = Math.max(0, item.cantidad - (presentacion.stockListo || 0));
+        // Los empaques se necesitan al entregar/vender cada presentación,
+        // aunque el postre ya esté listo en inventario.
+        for (const empaque of presentacion.empaques || []) {
+          requeridos.set(empaque.insumoId, (requeridos.get(empaque.insumoId) || 0) + empaque.cantidad * item.cantidad);
+        }
+        const factorReceta = Number.isFinite(presentacion.factorReceta) && presentacion.factorReceta > 0
+          ? presentacion.factorReceta
+          : 0;
+        if (!factorReceta) {
+          advertencias.add(`${producto.nombre} — factor de receta inválido`);
+          continue;
+        }
+        if (unidadesPorHacer > 0) {
+          const tanda = tandasPorReceta.get(receta.id) || { recetaId: receta.id, fracciones: 0, recetaNombre: receta.nombre, rendimientoCantidad: receta.rendimientoCantidad, rendimientoUnidad: receta.rendimientoUnidad };
+          tanda.fracciones += factorReceta * unidadesPorHacer;
+          tandasPorReceta.set(receta.id, tanda);
+        }
+    }
+    const resumenTandas = [...tandasPorReceta.values()].map((tanda) => {
+      const tandasCompletas = Math.ceil(tanda.fracciones - 1e-9);
+      const excedenteReceta = Math.max(0, tandasCompletas - tanda.fracciones) * tanda.rendimientoCantidad;
+      const receta = recetas.find((r) => r.id === tanda.recetaId);
+      for (const ingrediente of receta?.ingredientes || []) {
+        requeridos.set(ingrediente.insumoId, (requeridos.get(ingrediente.insumoId) || 0) + ingrediente.cantidad * tandasCompletas);
+      }
+      return { recetaNombre: tanda.recetaNombre, tandasCompletas, fracciones: tanda.fracciones, excedenteReceta, rendimientoUnidad: tanda.rendimientoUnidad };
+    }).sort((a, b) => a.recetaNombre.localeCompare(b.recetaNombre, 'es'));
+    const faltantes = [...requeridos.entries()].flatMap(([insumoId, requerido]) => {
+      const insumo = insumos.find((i) => i.id === insumoId);
+      if (!insumo) {
+        advertencias.add(`Insumo eliminado (${insumoId})`);
+        return [];
+      }
+      const disponible = Math.max(0, insumo.stockActual || 0);
+      const faltan = Math.max(0, requerido - disponible);
+      return faltan > 1e-7 ? [{ id: insumo.id, nombre: insumo.nombre, unidad: insumo.unidadUso, requerido, disponible, faltan }] : [];
+    }).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    return { faltantes, advertencias: [...advertencias], resumenTandas };
+  }, [pedidos, productos, recetas, insumos]);
   useEffect(() => setPaginaPedidos((pagina) => Math.min(pagina, totalPaginasPedidos)), [totalPaginasPedidos]);
   useEffect(() => setPaginaClientes((pagina) => Math.min(pagina, totalPaginasClientes)), [totalPaginasClientes]);
   const totalItems = (arr: PedidoItem[]) => arr.reduce((sum, item) => sum + item.cantidad * item.precioUnitario, 0);
@@ -119,6 +180,12 @@ export const OrdersView: React.FC<{ onNavigate: (tab: string) => void }> = ({ on
         {resumenProduccion.map((item) => <article key={`${item.productoId}-${item.presentacionId}`} className="rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-900/50 dark:bg-slate-900"><p className="text-sm font-bold">{item.productoNombre}</p><p className="text-xs text-slate-500 dark:text-slate-400">{item.presentacionNombre}</p><div className="mt-2 grid grid-cols-3 gap-2 text-center text-xs"><div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800"><span className="block text-slate-500">Pedidos</span><b>{item.solicitadas}</b></div><div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800"><span className="block text-slate-500">Stock listo</span><b>{item.stockListo}</b></div><div className="rounded-lg bg-rose-50 p-2 text-rose-800 dark:bg-rose-950/40 dark:text-rose-200"><span className="block">Por hacer</span><b>{item.porPreparar}</b></div></div></article>)}
       </div>}
     </section>
+    <section className="space-y-3 rounded-2xl border border-rose-200 bg-rose-50/70 p-4 dark:border-rose-900/60 dark:bg-rose-950/20">
+      <div><h3 className="font-bold text-rose-950 dark:text-rose-200">Insumos que faltan para completar los pedidos</h3><p className="text-xs text-rose-900/70 dark:text-rose-300/70">Calculado para lo que falta producir, después de descontar postres listos. Incluye ingredientes de recetas y empaques, desechables y otros insumos de las presentaciones.</p></div>
+      {faltantesInsumosPedidos.resumenTandas.length > 0 && <div className="grid gap-2 sm:grid-cols-2">{faltantesInsumosPedidos.resumenTandas.map((tanda) => <div key={tanda.recetaNombre} className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-900/50 dark:bg-amber-950/30"><b>{tanda.recetaNombre}: {tanda.tandasCompletas} {tanda.tandasCompletas === 1 ? 'tanda completa' : 'tandas completas'}</b><p className="mt-1 text-amber-900/80 dark:text-amber-200/80">Demanda de pedidos: {tanda.fracciones.toLocaleString('es-MX', { maximumFractionDigits: 3 })} tanda(s){tanda.excedenteReceta > 1e-7 ? ` · Excedente estimado: ${tanda.excedenteReceta.toLocaleString('es-MX', { maximumFractionDigits: 3 })} ${tanda.rendimientoUnidad}` : ''}</p></div>)}</div>}
+      {faltantesInsumosPedidos.faltantes.length === 0 ? <p className="rounded-xl border border-dashed border-rose-300 p-4 text-sm text-rose-900/70 dark:border-rose-800 dark:text-rose-300/70">No faltan insumos para los pedidos pendientes con las recetas y existencias configuradas.</p> : <div className="overflow-x-auto rounded-xl border border-rose-200 dark:border-rose-900/60"><table className="w-full min-w-[520px] text-left text-xs"><thead className="bg-white/80 text-rose-900 dark:bg-slate-900/70 dark:text-rose-200"><tr><th className="p-3">Insumo</th><th className="p-3 text-right">Requerido</th><th className="p-3 text-right">En stock</th><th className="p-3 text-right">Faltante</th></tr></thead><tbody className="divide-y divide-rose-100 dark:divide-rose-900/40">{faltantesInsumosPedidos.faltantes.map((item) => <tr key={item.id} className="bg-white/50 dark:bg-slate-900/30"><td className="p-3 font-semibold">{item.nombre}</td><td className="p-3 text-right">{item.requerido.toLocaleString('es-MX', { maximumFractionDigits: 3 })} {item.unidad}</td><td className="p-3 text-right">{item.disponible.toLocaleString('es-MX', { maximumFractionDigits: 3 })} {item.unidad}</td><td className="p-3 text-right font-black text-rose-700 dark:text-rose-300">{item.faltan.toLocaleString('es-MX', { maximumFractionDigits: 3 })} {item.unidad}</td></tr>)}</tbody></table></div>}
+      {faltantesInsumosPedidos.advertencias.length > 0 && <p className="text-xs text-amber-800 dark:text-amber-300">No se pudo calcular completamente para: {faltantesInsumosPedidos.advertencias.join(', ')}. Revisa que el producto tenga receta, presentación y sus insumos asociados.</p>}
+    </section>
     <section className="grid gap-5 xl:grid-cols-[1fr_1fr]">
       <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-center justify-between"><h3 className="font-bold">{editingPedido ? `Editar pedido ${editingPedido.folio}` : 'Nuevo pedido'}</h3>{editingPedido && <button onClick={cancelarEdicionPedido} className="inline-flex items-center gap-1 text-xs text-slate-500"><X size={14}/>Cancelar edición</button>}</div>
@@ -169,8 +236,8 @@ export const OrdersView: React.FC<{ onNavigate: (tab: string) => void }> = ({ on
             <div className="text-xs text-slate-500">{p.items.map((i) => `${i.cantidad} × ${i.productoNombre} (${i.presentacionNombre})`).join(' · ')}</div>
             <div className="flex items-center justify-between gap-2 text-sm"><span>{p.fechaEntrega ? `Entrega: ${p.fechaEntrega}` : p.fecha} · {formatMXN(totalItems(p.items))}</span>
               <div className="flex flex-wrap gap-2">
-                {!yaVendido && p.estado === 'pendiente' && <><button onClick={() => { localStorage.setItem('pedidoParaVenta', p.id); onNavigate('sales'); }} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-xs text-white"><ShoppingBag size={13}/>Registrar venta</button><button onClick={() => editarPedido(p)} className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"><Pencil size={12}/>Editar</button><button onClick={() => { if (window.confirm(`¿Cancelar el pedido ${p.folio}? Se conservará en el historial.`)) { updatePedido(p.id, { estado: 'cancelado' }); setMensaje(`Pedido ${p.folio} cancelado y conservado en el historial.`); } }} className="rounded-lg border px-2 py-1 text-xs">Cancelar</button></>}
-                {p.estado === 'cancelado' && !ventaLigada && <button onClick={() => { if (window.confirm(`¿Eliminar definitivamente el pedido cancelado ${p.folio}?`)) { deletePedido(p.id); setMensaje(`Pedido ${p.folio} eliminado.`); } }} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-xs text-rose-600"><Trash2 size={12}/>Eliminar</button>}
+                {!yaVendido && p.estado === 'pendiente' && <><button onClick={() => { localStorage.setItem('pedidoParaVenta', p.id); onNavigate('sales'); }} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-xs text-white"><ShoppingBag size={13}/>Registrar venta</button><button onClick={() => editarPedido(p)} className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"><Pencil size={12}/>Editar</button><button onClick={() => { void confirmarAccion(`¿Cancelar el pedido ${p.folio}? Se conservará en el historial.`, 'Cancelar pedido').then((confirmado) => { if (confirmado) { updatePedido(p.id, { estado: 'cancelado' }); setMensaje(`Pedido ${p.folio} cancelado y conservado en el historial.`); } }); }} className="rounded-lg border px-2 py-1 text-xs">Cancelar</button></>}
+                {p.estado === 'cancelado' && !ventaLigada && <button onClick={() => { void confirmarAccion(`¿Eliminar definitivamente el pedido cancelado ${p.folio}?`, 'Eliminar pedido').then((confirmado) => { if (confirmado) { deletePedido(p.id); setMensaje(`Pedido ${p.folio} eliminado.`); } }); }} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-xs text-rose-600"><Trash2 size={12}/>Eliminar</button>}
                 {yaVendido && <span className="rounded-lg bg-emerald-50 px-2 py-1 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{ventaLigada ? `Folio de venta ${ventaLigada.folioPedido || ''}` : 'Importado del historial de ventas'}</span>}
               </div>
             </div>
@@ -189,7 +256,7 @@ export const OrdersView: React.FC<{ onNavigate: (tab: string) => void }> = ({ on
             <input aria-label="Teléfono del cliente" className="w-full rounded-lg border bg-slate-50 p-2 text-sm dark:border-slate-700 dark:bg-slate-800" value={clienteEditTelefono} onChange={(e) => setClienteEditTelefono(e.target.value)} placeholder="Teléfono opcional"/>
             <input aria-label="Correo del cliente" type="email" className="w-full rounded-lg border bg-slate-50 p-2 text-sm dark:border-slate-700 dark:bg-slate-800" value={clienteEditCorreo} onChange={(e) => setClienteEditCorreo(e.target.value)} placeholder="Correo opcional"/>
             <div className="flex gap-2"><button onClick={() => { if (!clienteEditNombre.trim()) { setMensaje('El nombre del cliente es obligatorio.'); return; } updateCliente(c.id, { nombre: clienteEditNombre.trim(), telefono: clienteEditTelefono.trim() || undefined, correo: clienteEditCorreo.trim() || undefined }); setEditingCliente(null); setMensaje('Cliente actualizado.'); }} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white">Guardar</button><button onClick={() => setEditingCliente(null)} className="rounded-lg border px-3 py-1.5 text-xs">Cancelar</button></div>
-          </div> : <div className="flex items-start justify-between gap-2"><div><b className="text-sm">{c.nombre}</b><p className="text-xs text-slate-500">{[c.telefono, c.correo].filter(Boolean).join(' · ') || 'Sin datos de contacto'}</p></div><div className="flex gap-1"><button title="Editar cliente" onClick={() => { setEditingCliente(c.id); setClienteEditNombre(c.nombre); setClienteEditTelefono(c.telefono || ''); setClienteEditCorreo(c.correo || ''); }} className="rounded-lg border p-2"><Pencil size={13}/></button><button title="Eliminar cliente" onClick={() => { if (!window.confirm(`¿Eliminar al cliente ${c.nombre}? Se conservarán su nombre y datos en el historial de pedidos.`)) return; deleteCliente(c.id); setMensaje('Cliente eliminado; sus datos históricos en pedidos se conservaron.'); }} className="rounded-lg border border-rose-200 p-2 text-rose-600"><Trash2 size={13}/></button></div></div>}
+          </div> : <div className="flex items-start justify-between gap-2"><div><b className="text-sm">{c.nombre}</b><p className="text-xs text-slate-500">{[c.telefono, c.correo].filter(Boolean).join(' · ') || 'Sin datos de contacto'}</p></div><div className="flex gap-1"><button title="Editar cliente" onClick={() => { setEditingCliente(c.id); setClienteEditNombre(c.nombre); setClienteEditTelefono(c.telefono || ''); setClienteEditCorreo(c.correo || ''); }} className="rounded-lg border p-2"><Pencil size={13}/></button><button title="Eliminar cliente" onClick={() => { void confirmarAccion(`¿Eliminar al cliente ${c.nombre}? Se conservarán su nombre y datos en el historial de pedidos.`, 'Eliminar cliente').then((confirmado) => { if (confirmado) { deleteCliente(c.id); setMensaje('Cliente eliminado; sus datos históricos en pedidos se conservaron.'); } }); }} className="rounded-lg border border-rose-200 p-2 text-rose-600"><Trash2 size={13}/></button></div></div>}
         </article>)}
       </div>
       {clientes.length > 0 && <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3 text-xs dark:border-slate-800"><span>Mostrando {(paginaClientes - 1) * 5 + 1}–{Math.min(paginaClientes * 5, clientes.length)} de {clientes.length}</span><div className="flex gap-2"><button disabled={paginaClientes <= 1} onClick={() => setPaginaClientes((p) => Math.max(1, p - 1))} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Anterior</button><span className="px-2 py-1.5">Página {paginaClientes} de {totalPaginasClientes}</span><button disabled={paginaClientes >= totalPaginasClientes} onClick={() => setPaginaClientes((p) => Math.min(totalPaginasClientes, p + 1))} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Siguiente</button></div></div>}

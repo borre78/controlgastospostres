@@ -35,6 +35,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     reiniciarDatos,
     limpiarSoloEjemplosDemostracion,
     cargarDatosEjemplo,
+    confirmarAccion,
   } = useApp();
 
   // Estados de filtro
@@ -417,9 +418,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             </button>
             <button
               onClick={() => {
-                if (window.confirm('¿Deseas retirar los ejemplos de demostración? Todos tus productos, recetas, insumos y gastos reales se conservarán intactos.')) {
-                  limpiarSoloEjemplosDemostracion();
-                }
+                void confirmarAccion(
+                  '¿Deseas retirar los ejemplos de demostración? Todos tus productos, recetas, insumos y gastos reales se conservarán intactos.',
+                  'Limpiar ejemplos'
+                ).then((confirmado) => {
+                  if (confirmado) limpiarSoloEjemplosDemostracion();
+                });
               }}
               className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 text-slate-700 dark:text-slate-300 font-semibold transition text-xs whitespace-nowrap"
             >

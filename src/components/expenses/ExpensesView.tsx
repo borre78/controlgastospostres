@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { mostrarModalAviso } from '../../utils/appDialog';
 import {
   Receipt,
   Plus,
@@ -95,7 +96,7 @@ export const ExpensesView: React.FC = () => {
     e.preventDefault();
     const importeNum = parseFloat(formImporte);
     if (!formDescripcion.trim() || isNaN(importeNum) || importeNum <= 0) {
-      alert('Por favor introduce una descripción válida y un importe mayor a cero.');
+      mostrarModalAviso('Por favor introduce una descripción válida y un importe mayor a cero.');
       return;
     }
 

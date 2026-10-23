@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { mostrarModalAviso } from '../../utils/appDialog';
 import {
   Boxes,
   Flame,
@@ -126,12 +127,12 @@ export const InventoryView: React.FC = () => {
   const handleConfirmHornear = (e: React.FormEvent) => {
     e.preventDefault();
     if (!recetaSeleccionadaId) {
-      alert('Selecciona una receta');
+      mostrarModalAviso('Selecciona una receta');
       return;
     }
     const tNum = parseFloat(tandas);
     if (isNaN(tNum) || tNum <= 0) {
-      alert('Ingresa un número de tandas válido');
+      mostrarModalAviso('Ingresa un número de tandas válido');
       return;
     }
 

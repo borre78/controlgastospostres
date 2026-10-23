@@ -2,6 +2,7 @@ import React from 'react';
 import { Sun, Moon, Cloud, Sparkles, ChefHat,ChevronDown, LogOut,UserRound  } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { useApp } from '../../context/AppContext';
+import { mostrarModalAviso } from '../../utils/appDialog';
 import { PWAInstallButton } from '../common/PWAInstallButton';
 
 import { useEffect, useState } from 'react';
@@ -21,7 +22,7 @@ export const Navbar: React.FC<NavbarProps> = ({ setActiveTab }) => {
     await signOut(auth);
   } catch (error) {
     console.error('Error al cerrar sesión:', error);
-    alert('No fue posible cerrar la sesión. Intenta nuevamente.');
+    mostrarModalAviso('No fue posible cerrar la sesión. Intenta nuevamente.');
   }
 };
 

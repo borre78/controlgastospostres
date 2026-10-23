@@ -57,6 +57,7 @@ import {
 } from 'lucide-react';
 
 import { auth, authUsuarios, db } from '../../firebase';
+import { useApp } from '../../context/AppContext';
 
 type RolUsuario = 'admin' | 'editor' | 'viewer';
 
@@ -115,6 +116,8 @@ const mensajeError = (error: unknown): string => {
 };
 
 export function AdminUsuariosView() {
+
+  const { confirmarAccion } = useApp();
 
   const [miembroActual, setMiembroActual] = useState<Miembro | null>(null);
 
@@ -474,7 +477,7 @@ export function AdminUsuariosView() {
 
     const accion = usuario.activo ? 'desactivar' : 'activar';
 
-    if (!window.confirm(`¿Deseas ${accion} el acceso de ${usuario.nombre || usuario.email}?`)) return;
+    if (!(await confirmarAccion(`¿Deseas ${accion} el acceso de ${usuario.nombre || usuario.email}?`, `${accion[0].toUpperCase()}${accion.slice(1)} usuario`))) return;
 
     setGuardando(true);
 
@@ -534,10 +537,11 @@ export function AdminUsuariosView() {
 
     }
 
-    const confirmado = window.confirm(
+    const confirmado = await confirmarAccion(
 
       `¿Eliminar el acceso de ${usuario.nombre || usuario.email}?\n\nEsto elimina su membresía de PostresMila, pero no elimina su cuenta de Firebase Authentication.`,
 
+      'Eliminar usuario'
     );
 
     if (!confirmado) return;

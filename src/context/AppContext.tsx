@@ -113,6 +113,8 @@ interface AppContextType {
   generarSiguienteFolioPedido: () => string;
   updatePedido: (id: string, cambios: Partial<Pedido>) => void;
   deletePedido: (id: string) => boolean;
+  mostrarAlerta: (mensaje: string, titulo?: string) => void;
+  confirmarAccion: (mensaje: string, titulo?: string) => Promise<boolean>;
 
   // Gastos
   addGasto: (gasto: Omit<Gasto, 'id'>) => void;
@@ -185,6 +187,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       : CONFIGURACION_DEFAULT;
   });
   const [temaActual, setTemaActual] = useState<'light' | 'dark'>('light');
+  const [dialogoAplicacion, setDialogoAplicacion] = useState<{ tipo: 'alerta' | 'confirmar'; titulo: string; mensaje: string } | null>(null);
+  const resolverDialogo = useRef<((confirmado: boolean) => void) | null>(null);
+  const mostrarAlerta = (mensaje: string, titulo = 'Aviso') => setDialogoAplicacion({ tipo: 'alerta', titulo, mensaje });
+  const confirmarAccion = (mensaje: string, titulo = 'Confirmar acción') => new Promise<boolean>((resolve) => {
+    resolverDialogo.current = resolve;
+    setDialogoAplicacion({ tipo: 'confirmar', titulo, mensaje });
+  });
+  const cerrarDialogoAplicacion = (confirmado = false) => {
+    setDialogoAplicacion(null);
+    resolverDialogo.current?.(confirmado);
+    resolverDialogo.current = null;
+  };
+
+  useEffect(() => {
+    const recibirAviso = (evento: Event) => {
+      const detalle = (evento as CustomEvent<{ mensaje: string; titulo?: string }>).detail;
+      mostrarAlerta(detalle.mensaje, detalle.titulo || 'Aviso');
+    };
+    window.addEventListener('app:mostrar-aviso', recibirAviso);
+    return () => window.removeEventListener('app:mostrar-aviso', recibirAviso);
+  }, []);
 
 
 
@@ -1724,6 +1747,8 @@ const migrarDatosLocalesAFirebase = async (): Promise<{
         generarSiguienteFolioPedido,
         updatePedido,
         deletePedido,
+        mostrarAlerta,
+        confirmarAccion,
         addGasto,
         registrarCompraHistoricaInsumo,
         updateGasto,
@@ -1743,6 +1768,16 @@ const migrarDatosLocalesAFirebase = async (): Promise<{
       }}
     >
       {children}
+      {dialogoAplicacion && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="presentation">
+        <div role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title" className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+          <h2 id="app-dialog-title" className="text-lg font-bold text-slate-900 dark:text-white">{dialogoAplicacion.titulo}</h2>
+          <p className="mt-3 whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-300">{dialogoAplicacion.mensaje}</p>
+          <div className="mt-5 flex justify-end gap-2">
+            {dialogoAplicacion.tipo === 'confirmar' && <button autoFocus onClick={() => cerrarDialogoAplicacion(false)} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 dark:border-slate-600 dark:text-slate-200">No, regresar</button>}
+            {dialogoAplicacion.tipo === 'confirmar' ? <button onClick={() => cerrarDialogoAplicacion(true)} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white">Sí, continuar</button> : <button autoFocus onClick={() => cerrarDialogoAplicacion(false)} className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white">Entendido</button>}
+          </div>
+        </div>
+      </div>}
     </AppContext.Provider>
   );
 };

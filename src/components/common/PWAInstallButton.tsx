@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Download, Smartphone, X, CheckCircle, Share, PlusSquare } from 'lucide-react';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
+import { mostrarModalAviso } from '../../utils/appDialog';
 
 export const PWAInstallButton: React.FC = () => {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
@@ -117,7 +118,7 @@ export const PWAInstallButton: React.FC = () => {
   return (
     <button
       onClick={() => {
-        alert(
+        mostrarModalAviso(
           'Para instalar esta aplicación:\n- En Google Chrome: Haz clic en el ícono de instalar en la barra de direcciones o menú (tres puntos) -> "Instalar app".\n- En celular: Menú del navegador -> "Agregar a la pantalla principal".'
         );
       }}

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { mostrarModalAviso } from '../../utils/appDialog';
 import {
   ShoppingBag,
   Plus,
@@ -296,7 +297,7 @@ export const SalesView: React.FC = () => {
     );
 
     if (!primerProducto || !primeraPresentacion) {
-      alert('No hay presentaciones con existencias disponibles para agregar al pedido.');
+      mostrarModalAviso('No hay presentaciones con existencias disponibles para agregar al pedido.');
       return;
     }
 
@@ -352,7 +353,7 @@ export const SalesView: React.FC = () => {
       pUnit <= 0 ||
       desc < 0
     ) {
-      alert('Selecciona un producto y especifica cantidad y precio válidos.');
+      mostrarModalAviso('Selecciona un producto y especifica cantidad y precio válidos.');
       return;
     }
 
@@ -362,7 +363,7 @@ export const SalesView: React.FC = () => {
       // 1. Validar el stock del producto principal
       if (descontarStock) {
         if (!presentacionSeleccionada) {
-          alert('Selecciona una presentación válida.');
+          mostrarModalAviso('Selecciona una presentación válida.');
           return;
         }
 
@@ -372,7 +373,7 @@ export const SalesView: React.FC = () => {
         );
 
         if (cant > stockPrincipal) {
-          alert(`Solo tienes ${stockPrincipal} en stock de ${presentacionSeleccionada.nombre}.`);
+          mostrarModalAviso(`Solo tienes ${stockPrincipal} en stock de ${presentacionSeleccionada.nombre}.`);
           return;
         }
 
@@ -382,7 +383,7 @@ export const SalesView: React.FC = () => {
           const requerido = empaque.cantidad * cant;
 
           if (insumo && insumo.stockActual < requerido) {
-            alert(`No hay suficientes existencias de ${insumo.nombre}.`);
+            mostrarModalAviso(`No hay suficientes existencias de ${insumo.nombre}.`);
             return;
           }
         }
@@ -408,7 +409,7 @@ export const SalesView: React.FC = () => {
           precioItem <= 0 ||
           descuentoItem < 0
         ) {
-          alert(
+          mostrarModalAviso(
             `Revisa el producto adicional ${i + 1}: selecciona una presentación e indica cantidad y precio válidos.`
           );
           return;
@@ -421,7 +422,7 @@ export const SalesView: React.FC = () => {
           );
 
           if (cantidadItem > stockItem) {
-            alert(
+            mostrarModalAviso(
               `Solo tienes ${stockItem} en stock de ${presentacionItem.nombre}.`
             );
             return;
@@ -432,7 +433,7 @@ export const SalesView: React.FC = () => {
             const requerido = empaque.cantidad * cantidadItem;
 
             if (insumo && insumo.stockActual < requerido) {
-              alert(
+              mostrarModalAviso(
                 `No hay suficientes existencias de ${insumo.nombre} para ${presentacionItem.nombre}.`
               );
               return;
@@ -459,7 +460,7 @@ export const SalesView: React.FC = () => {
           );
         
           if (!presentacionValidar) {
-            alert('No se encontró una presentación válida en el pedido.');
+            mostrarModalAviso('No se encontró una presentación válida en el pedido.');
             return false;
           }
         
@@ -475,7 +476,7 @@ export const SalesView: React.FC = () => {
           );
         
           if (cantidadAcumulada > stockDisponible) {
-            alert(
+            mostrarModalAviso(
               `Stock insuficiente de ${presentacionValidar.nombre}. Necesitas ${cantidadAcumulada} y tienes ${stockDisponible}.`
             );
             return false;
@@ -527,7 +528,7 @@ export const SalesView: React.FC = () => {
             );
 
             if (!insumo) {
-              alert(
+              mostrarModalAviso(
                 'No se encontró un insumo de empaque asociado a una presentación.'
               );
               return false;
@@ -577,7 +578,7 @@ export const SalesView: React.FC = () => {
           const insumo = insumos.find((i) => i.id === insumoId);
 
           if (!insumo || insumo.stockActual < consumo.cantidad) {
-            alert(
+            mostrarModalAviso(
               `Existencias insuficientes de ${consumo.nombre}. Necesitas ${consumo.cantidad} y tienes ${insumo?.stockActual ?? 0}.`
             );
             return;
@@ -625,7 +626,7 @@ export const SalesView: React.FC = () => {
       });
 
       if (!resultadoEdicion.success) {
-        alert(resultadoEdicion.mensaje);
+        mostrarModalAviso(resultadoEdicion.mensaje);
         return;
       }
 
@@ -657,7 +658,7 @@ export const SalesView: React.FC = () => {
       );
 
       if (!resultadoVenta.success) {
-        alert(resultadoVenta.mensaje);
+        mostrarModalAviso(resultadoVenta.mensaje);
         return;
       }
       // Guardar cada producto adicional como otra venta
@@ -700,7 +701,7 @@ export const SalesView: React.FC = () => {
         );
         
         if (!resultadoAdicional.success) {
-          alert(
+          mostrarModalAviso(
             `No se pudo registrar ${productoItem.nombre}: ${resultadoAdicional.mensaje}`
           );
           return;
@@ -1427,7 +1428,7 @@ export const SalesView: React.FC = () => {
                   if (presentacionSeleccionada && solicitada > stock) {
                     setCantidad(String(stock));
                   
-                    alert(
+                    mostrarModalAviso(
                       `Solo tienes ${stock} en stock. La cantidad se ajustó a ${stock}.`
                     );
                   
@@ -1647,7 +1648,7 @@ export const SalesView: React.FC = () => {
                             )
                           );
                         
-                          alert(
+                          mostrarModalAviso(
                             `Solo tienes ${stock} en stock de ${presentacionItem.nombre}. La cantidad se ajustó a ${stock}.`
                           );
                           return;

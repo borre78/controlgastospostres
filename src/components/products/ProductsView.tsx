@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { mostrarModalAviso } from '../../utils/appDialog';
 import {
   Tag,
   Plus,
@@ -205,7 +206,7 @@ export const ProductsView: React.FC = () => {
   const handleSubmitProducto = (e: React.FormEvent) => {
     e.preventDefault();
     if (!prodNombre.trim() || !prodRecetaId) {
-      alert('Ingresa el nombre del producto y selecciona su receta base.');
+      mostrarModalAviso('Ingresa el nombre del producto y selecciona su receta base.');
       return;
     }
 
@@ -266,7 +267,7 @@ export const ProductsView: React.FC = () => {
   const handleAddEmpaqueItem = () => {
     const primerEmp = insumosEmpaques[0] || insumos[0];
     if (!primerEmp) {
-      alert('Debes registrar insumos de empaque en el Catálogo de Insumos primero.');
+      mostrarModalAviso('Debes registrar insumos de empaque en el Catálogo de Insumos primero.');
       return;
     }
     setPresEmpaques((prev) => [...prev, { insumoId: primerEmp.id, cantidad: 1 }]);
@@ -275,13 +276,13 @@ export const ProductsView: React.FC = () => {
   const handleSubmitPresentacion = (e: React.FormEvent) => {
     e.preventDefault();
     if (!presNombre.trim()) {
-      alert('Ingresa el nombre de la presentación (ej. Pay completo, Rebanada, Medio Litro, Vaso 6 oz).');
+      mostrarModalAviso('Ingresa el nombre de la presentación (ej. Pay completo, Rebanada, Medio Litro, Vaso 6 oz).');
       return;
     }
 
     const pReal = parseFloat(presPrecioVentaReal) || calculoPresEnVivo.precioSugerido;
     if (isNaN(pReal) || pReal <= 0) {
-      alert('Ingresa un precio de venta válido.');
+      mostrarModalAviso('Ingresa un precio de venta válido.');
       return;
     }
 
